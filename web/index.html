@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta name="theme-color" content="#000000" />
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/web/icon.png" type="image/x-icon" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{.RelayName}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="flex flex-col bg-gray-100 text-gray-600 text-xl md:text-xl min-h-screen font-sans	">
+    <div class="flex-grow flex flex-col justify-center items-center px-4">
+      <!-- Container -->
+      <div class="flex flex-col text-center max-w-2xl">
+        <img src="/web/icon.png" class="self-center w-32" />
+
+        <h1 class="text-5xl md:text-6xl font-bold text-rose-500 mb-6">
+          {{.RelayName}}
+        </h1>
+
+        <p class="text-xl md:text-2xl mb-12">
+          {{.RelayDescription}}
+        </p>
+
+        <p class="mb-8 text-gray-500">
+          <a href="#" class="text-rose-400 hover:text-rose-500 underline">{{.RelayURL}}</a>
+          has free read access, writing is restricted to conversations where the owner is partecipating, whitin his web of trust.
+        </p>
+        <p class="text-gray-500">
+          Are you new to Nostr and do you want to know more?<br/>
+          Visit <a href="https://njump.me" class="text-rose-400 hover:text-rose-500 underline">njump.me</a> for a quick intro.
+        </p>
+      </div>
+    </div>
+
+    <footer class="text-center py-6 bg-gray-300 w-full">
+      <p class="text-lg text-gray-500">
+        Source code:
+       <a
+          href="https://github.com/dtonon/memories"
+          target="_blank"
+          class="text-rose-400 hover:text-rose-500 underline"
+          >Memories Relay</a
+        >
+        | Proudly powered by
+        <a
+          href="https://khatru.nostr.technology/"
+          target="_blank"
+          class="text-rose-400 hover:text-rose-500 underline"
+          >Khatru</a
+        >
+      </p>
+    </footer>
+  </body>
+</html>
