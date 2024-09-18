@@ -9,6 +9,23 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 )
 
+var seedRelays = []string{
+	"wss://nos.lol",
+	"wss://nostr.mom",
+	"wss://purplepag.es",
+	"wss://purplerelay.com",
+	"wss://relay.damus.io",
+	"wss://relay.nostr.band",
+	"wss://relay.snort.social",
+	"wss://relayable.org",
+	"wss://relay.primal.net",
+	"wss://relay.nostr.bg",
+	"wss://no.str.cr",
+	"wss://nostr21.com",
+	"wss://nostrue.com",
+	"wss://relay.siamstr.com",
+}
+
 func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 	timeout, cancel := context.WithTimeout(ctx, time.Duration(config.RefreshInterval)*time.Hour)
 	defer cancel()

@@ -45,7 +45,6 @@ var rootNotesList *RootNotes
 var relays []string
 var config Config
 var trustNetwork []string
-var seedRelays []string
 var booted bool
 var oneHopNetwork []string
 var trustNetworkMap map[string]bool
@@ -126,23 +125,6 @@ func main() {
 		}
 		return true, "event not allowed"
 	})
-
-	seedRelays = []string{
-		"wss://nos.lol",
-		"wss://nostr.mom",
-		"wss://purplepag.es",
-		"wss://purplerelay.com",
-		"wss://relay.damus.io",
-		"wss://relay.nostr.band",
-		"wss://relay.snort.social",
-		"wss://relayable.org",
-		"wss://relay.primal.net",
-		"wss://relay.nostr.bg",
-		"wss://no.str.cr",
-		"wss://nostr21.com",
-		"wss://nostrue.com",
-		"wss://relay.siamstr.com",
-	}
 
 	go refreshTrustNetwork(ctx, relay)
 
