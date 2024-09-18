@@ -124,7 +124,20 @@ func main() {
 		return true, "event not allowed"
 	})
 
-	go refreshTrustNetwork(ctx, relay)
+	// WoT and archiving procedures
+	interval := time.Duration(config.RefreshInterval) * time.Hour
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	go func() {
+		for {
+			refreshProfiles(ctx)
+			refreshTrustNetwork(ctx, relay)
+			if config.ArchivalSync {
+				archiveTrustedNotes(ctx, relay)
+			}
+			<-ticker.C // Wait for the ticker to tick
+		}
+	}()
 
 	mux := relay.Router()
 	static := http.FileServer(http.Dir(config.StaticPath))

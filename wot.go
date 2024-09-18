@@ -55,64 +55,57 @@ func refreshProfiles(ctx context.Context) {
 }
 
 func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
-	runTrustNetworkRefresh := func() {
-		timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	filters := []nostr.Filter{{
+		Authors: []string{config.OwnerPubkey},
+		Kinds:   []int{nostr.KindContactList},
+	}}
+
+	log.Println("🔍 WoT: fetching owner's follows")
+	for ev := range pool.SubManyEose(timeoutCtx, seedRelays, filters) {
+		for _, contact := range ev.Event.Tags.GetAll([]string{"p"}) {
+			pubkeyFollowerCount[contact[1]]++ // Increment follower count for the pubkey
+			appendOneHopNetwork(contact[1])
+		}
+	}
+
+	log.Println("🌐 WoT: building web of trust graph...")
+	for i := 0; i < len(oneHopNetwork); i += 100 {
+		timeout, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
 
-		filters := []nostr.Filter{{
-			Authors: []string{config.OwnerPubkey},
-			Kinds:   []int{nostr.KindContactList},
+		end := i + 100
+		if end > len(oneHopNetwork) {
+			end = len(oneHopNetwork)
+		}
+
+		filters = []nostr.Filter{{
+			Authors: oneHopNetwork[i:end],
+			Kinds:   []int{nostr.KindContactList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
 		}}
 
-		log.Println("🔍 WoT: fetching owner's follows")
-		for ev := range pool.SubManyEose(timeoutCtx, seedRelays, filters) {
+		for ev := range pool.SubManyEose(timeout, seedRelays, filters) {
 			for _, contact := range ev.Event.Tags.GetAll([]string{"p"}) {
-				pubkeyFollowerCount[contact[1]]++ // Increment follower count for the pubkey
-				appendOneHopNetwork(contact[1])
+				if len(contact) > 1 {
+					pubkeyFollowerCount[contact[1]]++ // Increment follower count for the pubkey
+				}
+			}
+
+			for _, relay := range ev.Event.Tags.GetAll([]string{"r"}) {
+				appendRelay(relay[1])
+			}
+
+			if ev.Event.Kind == nostr.KindProfileMetadata {
+				wdb.Publish(ctx, *ev.Event)
 			}
 		}
-
-		log.Println("🌐 WoT: building web of trust graph...")
-		for i := 0; i < len(oneHopNetwork); i += 100 {
-			timeout, cancel := context.WithTimeout(ctx, 4*time.Second)
-			defer cancel()
-
-			end := i + 100
-			if end > len(oneHopNetwork) {
-				end = len(oneHopNetwork)
-			}
-
-			filters = []nostr.Filter{{
-				Authors: oneHopNetwork[i:end],
-				Kinds:   []int{nostr.KindContactList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
-			}}
-
-			for ev := range pool.SubManyEose(timeout, seedRelays, filters) {
-				for _, contact := range ev.Event.Tags.GetAll([]string{"p"}) {
-					if len(contact) > 1 {
-						pubkeyFollowerCount[contact[1]]++ // Increment follower count for the pubkey
-					}
-				}
-
-				for _, relay := range ev.Event.Tags.GetAll([]string{"r"}) {
-					appendRelay(relay[1])
-				}
-
-				if ev.Event.Kind == nostr.KindProfileMetadata {
-					wdb.Publish(ctx, *ev.Event)
-				}
-			}
-		}
-		log.Println("🫂  WoT: total network size:", len(pubkeyFollowerCount))
-		log.Println("🔗 WoT: relays discovered:", len(relays))
 	}
+	log.Println("🫂  WoT: total network size:", len(pubkeyFollowerCount))
+	log.Println("🔗 WoT: relays discovered:", len(relays))
 
-	for {
-		runTrustNetworkRefresh()
-		updateTrustNetworkFilter()
-		archiveTrustedNotes(ctx, relay)
-	}
+	updateTrustNetworkFilter()
 }
 
 func appendRelay(relay string) {
