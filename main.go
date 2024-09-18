@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/fiatjaf/eventstore"
@@ -125,19 +126,27 @@ func main() {
 	})
 
 	// WoT and archiving procedures
+	var wg sync.WaitGroup
+	wg.Add(1) // We expect one goroutine to finish
 	interval := time.Duration(config.RefreshInterval) * time.Hour
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	go func() {
+		refreshProfiles(ctx)
+		refreshTrustNetwork(ctx, relay)
+		wg.Done()
 		for {
-			refreshProfiles(ctx)
-			refreshTrustNetwork(ctx, relay)
 			if config.ArchivalSync {
 				archiveTrustedNotes(ctx, relay)
 			}
 			<-ticker.C // Wait for the ticker to tick
+			refreshProfiles(ctx)
+			refreshTrustNetwork(ctx, relay)
 		}
 	}()
+
+	// Wait for the first execution to complete
+	wg.Wait()
 
 	mux := relay.Router()
 	static := http.FileServer(http.Dir(config.StaticPath))
