@@ -45,7 +45,6 @@ var rootNotesList *RootNotes
 var relays []string
 var config Config
 var trustNetwork []string
-var booted bool
 var oneHopNetwork []string
 var trustNetworkMap map[string]bool
 var pubkeyFollowerCount = make(map[string]int)
@@ -54,7 +53,6 @@ var untrustedNotes uint64
 
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
-	booted = false
 	magenta := "\033[91m"
 	gray := "\033[90m"
 	reset := "\033[0m"
