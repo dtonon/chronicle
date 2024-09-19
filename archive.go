@@ -30,8 +30,6 @@ func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 	timeout, cancel := context.WithTimeout(ctx, time.Duration(config.RefreshInterval)*time.Hour)
 	defer cancel()
 
-	done := make(chan struct{})
-
 	go func() {
 		filters := []nostr.Filter{
 			{
@@ -65,19 +63,12 @@ func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 		log.Println("📦 Archiving trusted notes...")
 
 		for ev := range pool.SubMany(timeout, seedRelays, filters) {
-			archiveEvent(ctx, relay, *ev.Event)
+			go archiveEvent(ctx, relay, *ev.Event)
 		}
-		close(done)
 	}()
 
-	select {
-	case <-done:
-		log.Println("📦 Archived", trustedNotes, "trusted notes, discarded", untrustedNotes, "notes")
-	case <-timeout.Done():
-		log.Println("‼️  Archiving timed out")
-		log.Println("📦 \\-- Archived", trustedNotes, "trusted notes, discarded", untrustedNotes, "notes")
-		return
-	}
+	<-timeout.Done()
+	log.Println("📦 Archived", trustedNotes, "trusted notes, discarded", untrustedNotes, "notes")
 }
 
 func archiveEvent(ctx context.Context, relay *khatru.Relay, event nostr.Event) {
