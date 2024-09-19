@@ -162,11 +162,13 @@ func main() {
 			RelayPubkey      string
 			RelayDescription string
 			RelayURL         string
+			RelayOwner       string
 		}{
 			RelayName:        config.RelayName,
 			RelayPubkey:      config.RelayPubkey,
 			RelayDescription: config.RelayDescription,
 			RelayURL:         config.RelayURL,
+			RelayOwner:       config.OwnerPubkey,
 		}
 		err := tmpl.Execute(w, data)
 		if err != nil {
