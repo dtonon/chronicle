@@ -27,45 +27,57 @@ var seedRelays = []string{
 }
 
 func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
-	timeout, cancel := context.WithTimeout(ctx, time.Duration(config.RefreshInterval)*time.Minute)
+	timeout, cancel := context.WithTimeout(ctx, time.Duration(config.RefreshInterval)*time.Hour)
 	defer cancel()
 
-	filters := []nostr.Filter{
-		{
-			Kinds: []int{
-				nostr.KindArticle,
-				nostr.KindDeletion,
-				nostr.KindEncryptedDirectMessage,
-				nostr.KindReaction,
-				nostr.KindRepost,
-				nostr.KindZapRequest,
-				nostr.KindZap,
-				nostr.KindTextNote,
+	done := make(chan struct{})
+
+	go func() {
+		filters := []nostr.Filter{
+			{
+				Kinds: []int{
+					nostr.KindArticle,
+					nostr.KindDeletion,
+					nostr.KindEncryptedDirectMessage,
+					nostr.KindReaction,
+					nostr.KindRepost,
+					nostr.KindZapRequest,
+					nostr.KindZap,
+					nostr.KindTextNote,
+				},
+				Authors: []string{config.OwnerPubkey},
 			},
-			Authors: []string{config.OwnerPubkey},
-		},
-		{
-			Kinds: []int{
-				nostr.KindArticle,
-				nostr.KindDeletion,
-				nostr.KindEncryptedDirectMessage,
-				nostr.KindReaction,
-				nostr.KindRepost,
-				nostr.KindZapRequest,
-				nostr.KindZap,
-				nostr.KindTextNote,
+			{
+				Kinds: []int{
+					nostr.KindArticle,
+					nostr.KindDeletion,
+					nostr.KindEncryptedDirectMessage,
+					nostr.KindReaction,
+					nostr.KindRepost,
+					nostr.KindZapRequest,
+					nostr.KindZap,
+					nostr.KindTextNote,
+				},
+				Tags: nostr.TagMap{"p": []string{config.OwnerPubkey}},
 			},
-			Tags: nostr.TagMap{"p": []string{config.OwnerPubkey}},
-		},
+		}
+
+		log.Println("📦 Archiving trusted notes...")
+
+		for ev := range pool.SubMany(timeout, seedRelays, filters) {
+			archiveEvent(ctx, relay, *ev.Event)
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Println("📦 Archived", trustedNotes, "trusted notes, discarded", untrustedNotes, "notes")
+	case <-timeout.Done():
+		log.Println("‼️  Archiving timed out")
+		log.Println("📦 \\-- Archived", trustedNotes, "trusted notes, discarded", untrustedNotes, "notes")
+		return
 	}
-
-	log.Println("📦 Archiving trusted notes...")
-
-	for ev := range pool.SubMany(timeout, seedRelays, filters) {
-		archiveEvent(ctx, relay, *ev.Event)
-	}
-
-	log.Println("📦 Archived", trustedNotes, "trusted notes and discarded", untrustedNotes, "untrusted notes")
 }
 
 func archiveEvent(ctx context.Context, relay *khatru.Relay, event nostr.Event) {
