@@ -51,6 +51,7 @@ var trustNetworkMap map[string]bool
 var pubkeyFollowerCount = make(map[string]int)
 var trustedNotes uint64
 var untrustedNotes uint64
+var relay *khatru.Relay
 
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
@@ -118,7 +119,7 @@ func main() {
 	relay.QueryEvents = append(relay.QueryEvents, db.QueryEvents)
 	relay.DeleteEvent = append(relay.DeleteEvent, db.DeleteEvent)
 	relay.RejectEvent = append(relay.RejectEvent, func(ctx context.Context, event *nostr.Event) (bool, string) {
-		if acceptedEvent(*event) {
+		if acceptedEvent(*event, true) {
 			addEventToRootList(*event)
 			return false, ""
 		}
@@ -227,14 +228,59 @@ func getEnv(key string) string {
 	return value
 }
 
-func acceptedEvent(event nostr.Event) bool {
+func acceptedEvent(event nostr.Event, findRoot bool) bool {
 	if event.PubKey == config.OwnerPubkey {
+
+		// If is a reply check that the thread has been archived
+		rootReference := nip10.GetThreadRoot(event.Tags)
+		if findRoot &&
+			rootReference != nil && // It's a reply
+			!rootNotesList.Include(rootReference.Value()) { // It's not archived
+			go fetchConversation(rootReference)
+		}
+
 		return true
+
 	} else if belongsToValidThread(event) && belongsToWotNetwork(event) {
 		return true
+
 	} else {
 		return false
 	}
+}
+
+func fetchConversation(eTag *nostr.Tag) {
+	ctx := context.Background()
+	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	eventID := eTag.Value()
+	eventRelay := eTag.Relay()
+
+	go func() {
+		filters := []nostr.Filter{
+			{
+				IDs: []string{eventID},
+			},
+			{
+				Kinds: []int{
+					nostr.KindArticle,
+					nostr.KindDeletion,
+					nostr.KindReaction,
+					nostr.KindZapRequest,
+					nostr.KindZap,
+					nostr.KindTextNote,
+				},
+				Tags: nostr.TagMap{"e": []string{eventID}},
+			},
+		}
+
+		for ev := range pool.SubMany(timeout, append([]string{eventRelay}, seedRelays...), filters) {
+			wdb.Publish(ctx, *ev.Event)
+		}
+	}()
+
+	<-timeout.Done()
 }
 
 func belongsToValidThread(event nostr.Event) bool {

@@ -72,7 +72,7 @@ func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 }
 
 func archiveEvent(ctx context.Context, relay *khatru.Relay, event nostr.Event) {
-	if acceptedEvent(event) {
+	if acceptedEvent(event, false) {
 		addEventToRootList(event)
 		wdb.Publish(ctx, event)
 		relay.BroadcastEvent(&event)
