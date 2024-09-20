@@ -60,17 +60,17 @@ func main() {
 	reset := "\033[0m"
 
 	art := magenta + `
-  __  __                           _           
- |  \/  | ___ _ __ ___   ___  _ __(_) ___  ___ 
- | |\/| |/ _ \ '_ ' _ \ / _ \| '__| |/ _ \/ __|
- | |  | |  __/ | | | | | (_) | |  | |  __/\__ \
- |_|  |_|\___|_| |_| |_|\___/|_|  |_|\___||___/` + reset + `
-     a Nostr relay to store your conversations` + gray + `
+   ____ _                     _      _      
+  / ___| |__  _ __ ___  _ __ (_) ___| | ___ 
+ | |   | '_ \| '__/ _ \| '_ \| |/ __| |/ _ \
+ | |___| | | | | | (_) | | | | | (__| |  __/
+  \____|_| |_|_|  \___/|_| |_|_|\___|_|\___|` + gray + `
                         powered by Khatru
 ` + reset
 
 	fmt.Println(art)
-	log.Println("🚀 Booting up Memories relay")
+
+	log.Println("🚀 Booting up Chronicle relay")
 	relay := khatru.NewRelay()
 	ctx := context.Background()
 	pool = nostr.NewSimplePool(ctx)
@@ -81,7 +81,7 @@ func main() {
 	relay.Info.Icon = config.RelayIcon
 	relay.Info.Contact = config.RelayContact
 	relay.Info.Description = config.RelayDescription
-	relay.Info.Software = "Memories Relay"
+	relay.Info.Software = "Chronicle Relay"
 	relay.Info.Version = version
 
 	appendPubkey(config.RelayPubkey)

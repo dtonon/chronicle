@@ -1,4 +1,4 @@
-module memories
+module chronicle
 
 go 1.23.0
 
