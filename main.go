@@ -31,6 +31,7 @@ type Config struct {
 	RelayDescription string
 	DBPath           string
 	RelayURL         string
+	RelayPort        string
 	WebPath          string
 	RefreshInterval  int
 	MinFollowers     int
@@ -161,12 +162,14 @@ func main() {
 			RelayPubkey      string
 			RelayDescription string
 			RelayURL         string
+			RelayPort        string
 			RelayOwner       string
 		}{
 			RelayName:        config.RelayName,
 			RelayPubkey:      config.RelayPubkey,
 			RelayDescription: config.RelayDescription,
 			RelayURL:         config.RelayURL,
+			RelayPort:        config.RelayPort,
 			RelayOwner:       config.OwnerPubkey,
 		}
 		err := tmpl.Execute(w, data)
@@ -175,8 +178,8 @@ func main() {
 		}
 	})
 
-	log.Println("🎉 Relay running on port :3334")
-	err := http.ListenAndServe(":3334", relay)
+	log.Println("🎉 Relay running on port", config.RelayPort)
+	err := http.ListenAndServe(":"+config.RelayPort, relay)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -211,6 +214,7 @@ func LoadConfig() Config {
 		RelayIcon:        getEnv("RELAY_ICON"),
 		DBPath:           getEnv("DB_PATH"),
 		RelayURL:         getEnv("RELAY_URL"),
+		RelayPort:        getEnv("RELAY_PORT"),
 		WebPath:          getEnv("WEB_PATH"),
 		RefreshInterval:  refreshInterval,
 		MinFollowers:     minFollowers,
