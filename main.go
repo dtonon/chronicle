@@ -31,8 +31,7 @@ type Config struct {
 	RelayDescription string
 	DBPath           string
 	RelayURL         string
-	IndexPath        string
-	StaticPath       string
+	WebPath          string
 	RefreshInterval  int
 	MinimumFollowers int
 	ArchivalSync     bool
@@ -150,13 +149,13 @@ func main() {
 	wg.Wait()
 
 	mux := relay.Router()
-	static := http.FileServer(http.Dir(config.StaticPath))
+	web := http.FileServer(http.Dir(config.WebPath))
 
-	mux.Handle("GET /web/", http.StripPrefix("/web/", static))
-	mux.Handle("GET /favicon.ico", http.StripPrefix("/", static))
+	mux.Handle("GET /web/", http.StripPrefix("/web/", web))
+	mux.Handle("GET /favicon.ico", http.StripPrefix("/", web))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		tmpl := template.Must(template.ParseFiles(os.Getenv("INDEX_PATH")))
+		tmpl := template.Must(template.ParseFiles(config.WebPath + "index.html"))
 		data := struct {
 			RelayName        string
 			RelayPubkey      string
@@ -212,8 +211,7 @@ func LoadConfig() Config {
 		RelayIcon:        getEnv("RELAY_ICON"),
 		DBPath:           getEnv("DB_PATH"),
 		RelayURL:         getEnv("RELAY_URL"),
-		IndexPath:        getEnv("INDEX_PATH"),
-		StaticPath:       getEnv("STATIC_PATH"),
+		WebPath:          getEnv("WEB_PATH"),
 		RefreshInterval:  refreshInterval,
 		MinimumFollowers: minimumFollowers,
 		ArchivalSync:     getEnv("ARCHIVAL_SYNC") == "TRUE",
