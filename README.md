@@ -26,7 +26,7 @@ OWNER_PUBKEY="xxxxxxxxxxxxxxxxxxxxxxxxxxx...xxx"
 RELAY_NAME="YourRelayName"
 RELAY_DESCRIPTION="Your relay description"
 RELAY_URL="wss://chronicle.xxxxxxxx.com"
-RELAY_ICON="https://chronicle.xxxxxxxx.com/web/icon.png"
+RELAY_ICON="https://chronicle.xxxxxxxx.com/assets/icon.png"
 RELAY_CONTACT="your_email_or_website"
 
 # The relay pubkey, in hex format
@@ -37,10 +37,10 @@ RELAY_PUBKEY="RelayPublicKey"
 DB_PATH="db/"
 
 # Interval in hours to refresh the web of trust
-REFRESH_INTERVAL_HOURS=24
+REFRESH_INTERVAL=24
 
 # How many followers before they're allowed in the WoT
-MINIMUM_FOLLOWERS=3
+MIN_FOLLOWERS=3
 
 # Periodically try fetch notes from other relays
 FETCH_SYNC="FALSE"
