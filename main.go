@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,12 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip10"
 )
+
+//go:embed template/index.html
+var indexHTML string
+
+//go:embed template/assets
+var assets embed.FS
 
 var (
 	version string
@@ -150,13 +158,16 @@ func main() {
 	wg.Wait()
 
 	mux := relay.Router()
-	web := http.FileServer(http.Dir(config.WebPath))
 
-	mux.Handle("GET /web/", http.StripPrefix("/web/", web))
-	mux.Handle("GET /favicon.ico", http.StripPrefix("/", web))
+	serverRoot, fsErr := fs.Sub(assets, "template/assets")
+	if fsErr != nil {
+		log.Fatal(fsErr)
+	}
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(serverRoot))))
+	mux.Handle("/favicon.ico", http.FileServer(http.FS(serverRoot)))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		tmpl := template.Must(template.ParseFiles(config.WebPath + "index.html"))
+		tmpl := template.Must(template.New("index").Parse(indexHTML))
 		data := struct {
 			RelayName        string
 			RelayPubkey      string

@@ -36,10 +36,6 @@ RELAY_PUBKEY="RelayPublicKey"
 # The path can be relative to the binary, or absolute
 DB_PATH="db/"
 
-# Where we should store the index.html and static files
-# The path can be relative to the binary, or absolute
-WEB_PATH="web/"
-
 # Interval in hours to refresh the web of trust
 REFRESH_INTERVAL_HOURS=24
 
