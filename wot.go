@@ -23,7 +23,7 @@ func updateTrustNetworkFilter() {
 
 	log.Println("🌐 WoT: updating trust network map...")
 	for pubkey, count := range pubkeyFollowerCount {
-		if count >= config.MinimumFollowers {
+		if count >= config.MinFollowers {
 			trustNetworkMap[pubkey] = true
 			appendPubkey(pubkey)
 		}

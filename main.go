@@ -33,8 +33,8 @@ type Config struct {
 	RelayURL         string
 	WebPath          string
 	RefreshInterval  int
-	MinimumFollowers int
-	ArchivalSync     bool
+	MinFollowers     int
+	FetchSync        bool
 	RelayContact     string
 	RelayIcon        string
 }
@@ -136,7 +136,7 @@ func main() {
 		refreshTrustNetwork(ctx, relay)
 		wg.Done()
 		for {
-			if config.ArchivalSync {
+			if config.FetchSync {
 				archiveTrustedNotes(ctx, relay)
 			}
 			<-ticker.C // Wait for the ticker to tick
@@ -185,22 +185,22 @@ func main() {
 func LoadConfig() Config {
 	godotenv.Load(".env")
 
-	if os.Getenv("REFRESH_INTERVAL_HOURS") == "" {
-		os.Setenv("REFRESH_INTERVAL_HOURS", "3")
+	if os.Getenv("REFRESH_INTERVAL") == "" {
+		os.Setenv("REFRESH_INTERVAL", "3")
 	}
 
-	refreshInterval, _ := strconv.Atoi(os.Getenv("REFRESH_INTERVAL_HOURS"))
+	refreshInterval, _ := strconv.Atoi(os.Getenv("REFRESH_INTERVAL"))
 	log.Println("📝 Set refresh interval to", refreshInterval, "hours")
 
-	if os.Getenv("MINIMUM_FOLLOWERS") == "" {
-		os.Setenv("MINIMUM_FOLLOWERS", "1")
+	if os.Getenv("MIN_FOLLOWERS") == "" {
+		os.Setenv("MIN_FOLLOWERS", "1")
 	}
 
-	if os.Getenv("ARCHIVAL_SYNC") == "" {
-		os.Setenv("ARCHIVAL_SYNC", "TRUE")
+	if os.Getenv("FETCH_SYNC") == "" {
+		os.Setenv("FETCH_SYNC", "TRUE")
 	}
 
-	minimumFollowers, _ := strconv.Atoi(os.Getenv("MINIMUM_FOLLOWERS"))
+	minFollowers, _ := strconv.Atoi(os.Getenv("MIN_FOLLOWERS"))
 
 	config := Config{
 		OwnerPubkey:      getEnv("OWNER_PUBKEY"),
@@ -213,8 +213,8 @@ func LoadConfig() Config {
 		RelayURL:         getEnv("RELAY_URL"),
 		WebPath:          getEnv("WEB_PATH"),
 		RefreshInterval:  refreshInterval,
-		MinimumFollowers: minimumFollowers,
-		ArchivalSync:     getEnv("ARCHIVAL_SYNC") == "TRUE",
+		MinFollowers:     minFollowers,
+		FetchSync:        getEnv("FETCH_SYNC") == "TRUE",
 	}
 
 	return config
