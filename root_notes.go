@@ -24,12 +24,16 @@ func (r *RootNotes) Size() int {
 }
 
 // Add adds a string to the set if it is not already present and saves it to the file.
-func (r *RootNotes) Add(str string) error {
+func (r *RootNotes) Add(str string) *string {
 	if r.Include(str) {
-		return nil // String is already present, do nothing
+		// Return nil if the string is already present
+		return nil
 	}
 	r.strings[str] = struct{}{}
-	return r.AppendToFile(str) // Append the new string to the file
+	if err := r.AppendToFile(str); err != nil {
+		return nil
+	}
+	return &str
 }
 
 // Include checks if a string is present in the set.

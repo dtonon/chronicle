@@ -299,15 +299,51 @@ func fetchConversation(eTag *nostr.Tag) {
 }
 
 func belongsToValidThread(event nostr.Event) bool {
-	rootReference := nip10.GetThreadRoot(event.Tags)
-	rootCheck := false
-	if rootReference != nil {
-		rootCheck = rootNotesList.Include(rootReference.Value())
+
+	eReference := nip10.GetThreadRoot(event.Tags)
+	if eReference == nil {
+		// We already accept root notes by owner
+		return false
 	}
-	return rootCheck || rootNotesList.Include(event.ID)
+
+	if event.Kind == nostr.KindTextNote ||
+		event.Kind == nostr.KindArticle {
+
+		rootCheck := rootNotesList.Include(eReference.Value())
+		return rootCheck
+	}
+
+	// The event refers to a note in the thread
+	if event.Kind == nostr.KindDeletion ||
+		event.Kind == nostr.KindReaction ||
+		event.Kind == nostr.KindZapRequest ||
+		event.Kind == nostr.KindZap {
+
+		ctx := context.Background()
+		_, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		filter := nostr.Filter{
+			IDs: []string{eReference.Value()},
+		}
+		eventChan, _ := wdb.QueryEvents(ctx, filter)
+		for range eventChan {
+			return true
+		}
+	}
+
+	return false
+
 }
 
 func addEventToRootList(event nostr.Event) {
+
+	// Add only notes and articles to the root list
+	if event.Kind != nostr.KindTextNote &&
+		event.Kind != nostr.KindArticle {
+		return
+	}
+
 	rootReference := nip10.GetThreadRoot(event.Tags)
 	var rootReferenceValue string
 	if rootReference == nil { // Is a root post
@@ -315,7 +351,5 @@ func addEventToRootList(event nostr.Event) {
 	} else { // Is a reply
 		rootReferenceValue = rootReference.Value()
 	}
-	if rootNotesList.Add(rootReferenceValue) != nil {
-		log.Println("🗣️  Added new thread: ", rootReferenceValue)
-	}
+	rootNotesList.Add(rootReferenceValue)
 }
