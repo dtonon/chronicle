@@ -40,7 +40,6 @@ type Config struct {
 	DBPath           string
 	RelayURL         string
 	RelayPort        string
-	WebPath          string
 	RefreshInterval  int
 	MinFollowers     int
 	FetchSync        bool
@@ -226,7 +225,6 @@ func LoadConfig() Config {
 		DBPath:           getEnv("DB_PATH"),
 		RelayURL:         getEnv("RELAY_URL"),
 		RelayPort:        getEnv("RELAY_PORT"),
-		WebPath:          getEnv("WEB_PATH"),
 		RefreshInterval:  refreshInterval,
 		MinFollowers:     minFollowers,
 		FetchSync:        getEnv("FETCH_SYNC") == "TRUE",
