@@ -24,6 +24,7 @@ var seedRelays = []string{
 	"wss://nostr21.com",
 	"wss://nostrue.com",
 	"wss://relay.siamstr.com",
+	"wss://bitcoiner.social",
 }
 
 func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
