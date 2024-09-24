@@ -89,7 +89,7 @@ func main() {
 	relay.Info.Icon = config.RelayIcon
 	relay.Info.Contact = config.RelayContact
 	relay.Info.Description = config.RelayDescription
-	relay.Info.Software = "Chronicle Relay"
+	relay.Info.Software = "https://github.com/dtonon/chronicle"
 	relay.Info.Version = version
 
 	appendPubkey(config.RelayPubkey)
