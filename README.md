@@ -13,7 +13,7 @@ If it is posted by someone else it is checked if it is part of in a conversation
 
 If an event published by the owner refers to a conversation that is not yet known by the relay, it tries to fetch it.
 
-## How to run
+## Configure
 
 After cloning the repo create an `.env` file based on the example provided in the repository and personalize it:
 
@@ -46,7 +46,15 @@ MIN_FOLLOWERS=3
 FETCH_SYNC="FALSE"
 ```
 
+## Build
+
 Build it with `go install` or `go build`, then run it.
+
+By default Chronicle use [Badger](https://github.com/dgraph-io/badger) as event storage since it makes easier to cross-compile.  
+You can also use [lmdb](https://www.symas.com/lmdb), compiling with:
+```
+go build -tags=lmdb .
+```
 
 ## Credits
 
