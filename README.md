@@ -29,9 +29,6 @@ RELAY_URL="wss://chronicle.xxxxxxxx.com"
 RELAY_ICON="https://chronicle.xxxxxxxx.com/assets/icon.png"
 RELAY_CONTACT="your_email_or_website"
 
-# The relay pubkey, in hex format
-RELAY_PUBKEY="RelayPublicKey"
-
 # The path you would like the database to be saved
 # The path can be relative to the binary, or absolute
 DB_PATH="db/"

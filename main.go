@@ -35,7 +35,6 @@ var (
 type Config struct {
 	OwnerPubkey      string
 	RelayName        string
-	RelayPubkey      string
 	RelayDescription string
 	DBPath           string
 	RelayURL         string
@@ -84,14 +83,13 @@ func main() {
 	config = LoadConfig()
 
 	relay.Info.Name = config.RelayName
-	relay.Info.PubKey = config.RelayPubkey
+	relay.Info.PubKey = config.OwnerPubkey
 	relay.Info.Icon = config.RelayIcon
 	relay.Info.Contact = config.RelayContact
 	relay.Info.Description = config.RelayDescription
 	relay.Info.Software = "https://github.com/dtonon/chronicle"
 	relay.Info.Version = version
 
-	appendPubkey(config.RelayPubkey)
 	appendPubkey(config.OwnerPubkey)
 
 	db := getDB()
@@ -169,18 +167,16 @@ func main() {
 		tmpl := template.Must(template.New("index").Parse(indexHTML))
 		data := struct {
 			RelayName        string
-			RelayPubkey      string
 			RelayDescription string
 			RelayURL         string
 			RelayPort        string
-			RelayOwner       string
+			OwnerPubkey      string
 		}{
 			RelayName:        config.RelayName,
-			RelayPubkey:      config.RelayPubkey,
 			RelayDescription: config.RelayDescription,
 			RelayURL:         config.RelayURL,
 			RelayPort:        config.RelayPort,
-			RelayOwner:       config.OwnerPubkey,
+			OwnerPubkey:      config.OwnerPubkey,
 		}
 		err := tmpl.Execute(w, data)
 		if err != nil {
@@ -218,7 +214,6 @@ func LoadConfig() Config {
 	config := Config{
 		OwnerPubkey:      getEnv("OWNER_PUBKEY"),
 		RelayName:        getEnv("RELAY_NAME"),
-		RelayPubkey:      getEnv("RELAY_PUBKEY"),
 		RelayDescription: getEnv("RELAY_DESCRIPTION"),
 		RelayContact:     getEnv("RELAY_CONTACT"),
 		RelayIcon:        getEnv("RELAY_ICON"),
