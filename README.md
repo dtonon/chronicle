@@ -13,6 +13,13 @@ If it is posted by someone else it is checked if it is part of in a conversation
 
 If an event published by the owner refers to a conversation that is not yet known by the relay, it tries to fetch it.
 
+## Features highlight
+
+It works nicely as inbox/outbox/dm relay.  
+It is a space-efficient backup relay.  
+It offers spam protection by WoT.  
+It permits to load old notes with a "fetch sync" option.
+
 ## Configure
 
 After cloning the repo create an `.env` file based on the example provided in the repository and personalize it:
