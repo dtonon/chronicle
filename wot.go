@@ -60,7 +60,7 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 
 	filters := []nostr.Filter{{
 		Authors: []string{config.OwnerPubkey},
-		Kinds:   []int{nostr.KindContactList},
+		Kinds:   []int{nostr.KindFollowList},
 	}}
 
 	log.Println("🔍 WoT: fetching owner's follows")
@@ -83,7 +83,7 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 
 		filters = []nostr.Filter{{
 			Authors: oneHopNetwork[i:end],
-			Kinds:   []int{nostr.KindContactList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
+			Kinds:   []int{nostr.KindFollowList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
 		}}
 
 		for ev := range pool.SubManyEose(timeout, seedRelays, filters) {

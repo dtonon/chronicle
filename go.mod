@@ -8,7 +8,7 @@ require (
 	github.com/fiatjaf/eventstore v0.9.0
 	github.com/fiatjaf/khatru v0.8.1
 	github.com/joho/godotenv v1.5.1
-	github.com/nbd-wtf/go-nostr v0.36.3
+	github.com/nbd-wtf/go-nostr v0.38.2
 )
 
 require (
