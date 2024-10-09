@@ -124,8 +124,10 @@ func main() {
 	relay.QueryEvents = append(relay.QueryEvents, db.QueryEvents)
 	relay.DeleteEvent = append(relay.DeleteEvent, db.DeleteEvent)
 	relay.RejectEvent = append(relay.RejectEvent, func(ctx context.Context, event *nostr.Event) (bool, string) {
-		if acceptedEvent(*event, true) {
+		if acceptedEvent(*event) {
 			addEventToRootList(*event)
+			go fetchQuotedEvents(*event)
+			go fetchConversation(*event)
 			return false, ""
 		}
 		return true, "event not allowed"
@@ -236,17 +238,8 @@ func getEnv(key string) string {
 	return value
 }
 
-func acceptedEvent(event nostr.Event, findRoot bool) bool {
+func acceptedEvent(event nostr.Event) bool {
 	if event.PubKey == config.OwnerPubkey {
-
-		// If is a reply check that the thread has been archived
-		rootReference := nip10.GetThreadRoot(event.Tags)
-		if findRoot &&
-			rootReference != nil && // It's a reply
-			!rootNotesList.Include(rootReference.Value()) { // It's not archived
-			go fetchConversation(rootReference)
-		}
-
 		return true
 
 	} else if belongsToValidThread(event) && belongsToWotNetwork(event) {
@@ -257,13 +250,19 @@ func acceptedEvent(event nostr.Event, findRoot bool) bool {
 	}
 }
 
-func fetchConversation(eTag *nostr.Tag) {
+func fetchConversation(event nostr.Event) {
+	rootReference := nip10.GetThreadRoot(event.Tags)
+	if rootReference == nil || // It's not a reply
+		rootNotesList.Include(rootReference.Value()) { // It's archived
+		return // We don't need the full conversation
+	}
+
 	ctx := context.Background()
 	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	eventID := eTag.Value()
-	eventRelay := eTag.Relay()
+	eventID := rootReference.Value()
+	eventRelay := rootReference.Relay()
 
 	go func() {
 		filters := []nostr.Filter{
@@ -285,6 +284,50 @@ func fetchConversation(eTag *nostr.Tag) {
 
 		for ev := range pool.SubMany(timeout, append([]string{eventRelay}, seedRelays...), filters) {
 			wdb.Publish(ctx, *ev.Event)
+			go fetchQuotedEvents(*ev.Event)
+		}
+	}()
+
+	<-timeout.Done()
+}
+
+func fetchQuotedEvents(event nostr.Event) {
+
+	var quoteIDs []string
+	var quoteRelays []string
+	for _, tag := range event.Tags.GetAll([]string{"q", ""}) {
+		quoteIDs = append(quoteIDs, tag[1])
+		if len(tag) >= 3 && tag[2] != "" {
+			quoteRelays = append(quoteRelays, tag[2])
+		}
+	}
+
+	if len(quoteIDs) == 0 { // No quoted events found
+		return
+	}
+
+	ctx := context.Background()
+	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	go func() {
+		filters := []nostr.Filter{
+			{
+				IDs: quoteIDs,
+			},
+			{
+				Kinds: []int{
+					nostr.KindDeletion,
+					nostr.KindReaction,
+					nostr.KindZapRequest,
+					nostr.KindZap,
+				},
+				Tags: nostr.TagMap{"e": quoteIDs},
+			},
+		}
+
+		for ev := range pool.SubMany(timeout, append(quoteRelays, seedRelays...), filters) {
+			wdb.Publish(ctx, *ev.Event)
 		}
 	}()
 
@@ -292,7 +335,6 @@ func fetchConversation(eTag *nostr.Tag) {
 }
 
 func belongsToValidThread(event nostr.Event) bool {
-
 	eReference := nip10.GetThreadRoot(event.Tags)
 	if eReference == nil {
 		// We already accept root notes by owner
@@ -326,11 +368,9 @@ func belongsToValidThread(event nostr.Event) bool {
 	}
 
 	return false
-
 }
 
 func addEventToRootList(event nostr.Event) {
-
 	// Add only notes and articles to the root list
 	if event.Kind != nostr.KindTextNote &&
 		event.Kind != nostr.KindArticle {
