@@ -242,12 +242,19 @@ func acceptedEvent(event nostr.Event) bool {
 	if event.PubKey == config.OwnerPubkey {
 		return true
 
+	} else if event.Kind == nostr.KindGiftWrap {
+		for _, tag := range event.Tags.GetAll([]string{"p"}) {
+			if tag[1] == config.OwnerPubkey {
+				return belongsToWotNetwork(event)
+			}
+		}
+
 	} else if belongsToValidThread(event) && belongsToWotNetwork(event) {
 		return true
 
-	} else {
-		return false
 	}
+
+	return false
 }
 
 func fetchConversation(event nostr.Event) {

@@ -49,13 +49,14 @@ func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 			{
 				Kinds: []int{
 					nostr.KindArticle,
+					nostr.KindTextNote,
 					nostr.KindDeletion,
 					nostr.KindEncryptedDirectMessage,
 					nostr.KindReaction,
 					nostr.KindRepost,
 					nostr.KindZapRequest,
 					nostr.KindZap,
-					nostr.KindTextNote,
+					nostr.KindGiftWrap,
 				},
 				Tags: nostr.TagMap{"p": []string{config.OwnerPubkey}},
 			},
