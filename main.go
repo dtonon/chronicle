@@ -20,6 +20,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip10"
+	"github.com/nbd-wtf/go-nostr/nip13"
 )
 
 //go:embed template/index.html
@@ -44,6 +45,8 @@ type Config struct {
 	FetchSync        bool
 	RelayContact     string
 	RelayIcon        string
+	PowWhitelist     int
+	PowDMWhitelist   int
 }
 
 var pool *nostr.SimplePool
@@ -211,7 +214,16 @@ func LoadConfig() Config {
 		os.Setenv("FETCH_SYNC", "TRUE")
 	}
 
+	if os.Getenv("POW_WHITELIST") == "" {
+		os.Setenv("POW_WHITELIST", "999")
+	}
+	if os.Getenv("POW_DM_WHITELIST") == "" {
+		os.Setenv("POW_DM_WHITELIST", "999")
+	}
+
 	minFollowers, _ := strconv.Atoi(os.Getenv("MIN_FOLLOWERS"))
+	PowWhitelist, _ := strconv.Atoi(os.Getenv("POW_WHITELIST"))
+	PowDMWhitelist, _ := strconv.Atoi(os.Getenv("POW_DM_WHITELIST"))
 
 	config := Config{
 		OwnerPubkey:      getEnv("OWNER_PUBKEY"),
@@ -225,6 +237,8 @@ func LoadConfig() Config {
 		RefreshInterval:  refreshInterval,
 		MinFollowers:     minFollowers,
 		FetchSync:        getEnv("FETCH_SYNC") == "TRUE",
+		PowWhitelist:     PowWhitelist,
+		PowDMWhitelist:   PowDMWhitelist,
 	}
 
 	return config
@@ -245,16 +259,19 @@ func acceptedEvent(event nostr.Event) bool {
 	} else if event.Kind == nostr.KindGiftWrap {
 		for _, tag := range event.Tags.GetAll([]string{"p"}) {
 			if tag[1] == config.OwnerPubkey {
-				return belongsToWotNetwork(event)
+				return (belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowDMWhitelist)
 			}
 		}
+		return false
 
-	} else if belongsToValidThread(event) && belongsToWotNetwork(event) {
+	} else if belongsToValidThread(event) &&
+		(belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowWhitelist) {
 		return true
 
 	}
 
 	return false
+
 }
 
 func fetchConversation(event nostr.Event) {

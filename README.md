@@ -9,7 +9,8 @@ Chronicle fits well in the Outbox model, so you can use it as your read/write re
 
 Every incoming event is verified against some simple rules.  
 If it's signed by the relay owner, it is automatically accepted.  
-If it is posted by someone else it is checked if it is part of in a conversation in which the owner participated *and* if the author is in the owner's social graph (to the 2nd degree), then it is accepted, otherwise it is rejected.
+If it is posted by someone else it is checked if it is part of in a conversation in which the owner participated *and* if the author is in the owner's social graph (to the 2nd degree), then it is accepted, otherwise it is rejected.  
+A couple of options (_POW\_*_, see below) permit to whitelist an event and bypass the WoT, if an event has a sufficient PoW.
 
 If an event published by the owner refers to a conversation that is not yet known by the relay, it tries to fetch it.
 
@@ -48,6 +49,14 @@ MIN_FOLLOWERS=3
 
 # Periodically try fetch notes from other relays
 FETCH_SYNC="FALSE"
+
+# Whitelist events and/or DMs by PoW
+# A positivie value enable the whitelist
+# Empty disables the whitelist
+# Zero (0) disables WoT - not recommended!
+POW_WHITELIST=
+POW_DM_WHITELIST=
+
 ```
 
 ## Build
