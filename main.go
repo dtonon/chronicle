@@ -350,7 +350,7 @@ func fetchQuotedEvents(event nostr.Event) {
 			},
 		}
 
-		for ev := range pool.SubMany(timeout, append(quoteRelays, seedRelays...), filters) {
+		for ev := range pool.SubManyEose(timeout, append(quoteRelays, seedRelays...), filters) {
 			wdb.Publish(ctx, *ev.Event)
 		}
 	}()
