@@ -65,7 +65,7 @@ func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 		log.Println("📦 Archiving trusted notes...")
 
 		for ev := range pool.SubMany(timeout, seedRelays, filters) {
-			go archiveEvent(ctx, relay, *ev.Event)
+			archiveEvent(ctx, relay, *ev.Event)
 		}
 	}()
 
