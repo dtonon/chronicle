@@ -77,7 +77,7 @@ func archiveEvent(ctx context.Context, relay *khatru.Relay, event nostr.Event) {
 	if acceptedEvent(event) {
 		addEventToRootList(event)
 		fetchQuotedEvents(event)
-		wdb.Publish(ctx, event)
+		saveEvent(ctx, event)
 		relay.BroadcastEvent(&event)
 		trustedNotes++
 	} else {

@@ -340,7 +340,7 @@ func fetchConversation(event nostr.Event) {
 		}
 
 		for ev := range pool.SubMany(timeout, append([]string{eventRelay}, seedRelays...), filters) {
-			wdb.Publish(ctx, *ev.Event)
+			saveEvent(ctx, *ev.Event)
 			go fetchQuotedEvents(*ev.Event)
 		}
 	}()
@@ -384,7 +384,7 @@ func fetchQuotedEvents(event nostr.Event) {
 		}
 
 		for ev := range pool.SubManyEose(timeout, append(quoteRelays, seedRelays...), filters) {
-			wdb.Publish(ctx, *ev.Event)
+			saveEvent(ctx, *ev.Event)
 		}
 	}()
 
@@ -442,4 +442,17 @@ func addEventToRootList(event nostr.Event) {
 		rootReferenceValue = rootReference.Value()
 	}
 	rootNotesList.Add(rootReferenceValue)
+}
+
+func saveEvent(ctx context.Context, event nostr.Event) bool {
+	filter := nostr.Filter{IDs: []string{event.ID}}
+	eventChan, err := wdb.QueryEvents(ctx, filter)
+	if err != nil {
+		return false
+	}
+	for range eventChan {
+		return true
+	}
+	wdb.Publish(ctx, event)
+	return true
 }

@@ -48,7 +48,7 @@ func refreshProfiles(ctx context.Context) {
 		}}
 
 		for ev := range pool.SubManyEose(timeout, seedRelays, filters) {
-			wdb.Publish(ctx, *ev.Event)
+			relay.AddEvent(ctx, ev.Event)
 		}
 	}
 	log.Println("👤 WoT: profiles refreshed: ", len(trustNetwork))
@@ -98,7 +98,7 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 			}
 
 			if ev.Event.Kind == nostr.KindProfileMetadata {
-				wdb.Publish(ctx, *ev.Event)
+				relay.AddEvent(ctx, ev.Event)
 			}
 		}
 	}
