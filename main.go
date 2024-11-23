@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"fmt"
-	"html/template"
 	"io"
 	"io/fs"
 	"log"
@@ -12,10 +12,12 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/fiatjaf/eventstore"
 	"github.com/fiatjaf/khatru"
+	"github.com/fiatjaf/khatru/blossom"
 	"github.com/fiatjaf/khatru/policies"
 	"github.com/joho/godotenv"
 	"github.com/nbd-wtf/go-nostr"
@@ -34,19 +36,21 @@ var (
 )
 
 type Config struct {
-	OwnerPubkey      string
-	RelayName        string
-	RelayDescription string
-	DBPath           string
-	RelayURL         string
-	RelayPort        string
-	RefreshInterval  int
-	MinFollowers     int
-	FetchSync        bool
-	RelayContact     string
-	RelayIcon        string
-	PowWhitelist     int
-	PowDMWhitelist   int
+	OwnerPubkey       string
+	RelayName         string
+	RelayDescription  string
+	DBPath            string
+	RelayURL          string
+	RelayPort         string
+	RefreshInterval   int
+	MinFollowers      int
+	FetchSync         bool
+	RelayContact      string
+	RelayIcon         string
+	PowWhitelist      int
+	PowDMWhitelist    int
+	BlossomAssetsPath string
+	BlossomPublicURL  string
 }
 
 var pool *nostr.SimplePool
@@ -84,6 +88,7 @@ func main() {
 	ctx := context.Background()
 	pool = nostr.NewSimplePool(ctx)
 	config = LoadConfig()
+	os.MkdirAll(config.BlossomAssetsPath, 0755)
 
 	relay.Info.Name = config.RelayName
 	relay.Info.PubKey = config.OwnerPubkey
@@ -136,29 +141,6 @@ func main() {
 		return true, "event not allowed"
 	})
 
-	// WoT and archiving procedures
-	var wg sync.WaitGroup
-	wg.Add(1) // We expect one goroutine to finish
-	interval := time.Duration(config.RefreshInterval) * time.Hour
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	go func() {
-		refreshProfiles(ctx)
-		refreshTrustNetwork(ctx, relay)
-		wg.Done()
-		for {
-			if config.FetchSync {
-				archiveTrustedNotes(ctx, relay)
-			}
-			<-ticker.C // Wait for the ticker to tick
-			refreshProfiles(ctx)
-			refreshTrustNetwork(ctx, relay)
-		}
-	}()
-
-	// Wait for the first execution to complete
-	wg.Wait()
-
 	mux := relay.Router()
 
 	serverRoot, fsErr := fs.Sub(assets, "template/assets")
@@ -188,6 +170,55 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
+
+	// Blossom config
+	bl := blossom.New(relay, config.BlossomPublicURL)
+	bl.Store = blossom.EventStoreBlobIndexWrapper{Store: &db, ServiceURL: bl.ServiceURL}
+	bl.StoreBlob = append(bl.StoreBlob, func(ctx context.Context, sha256 string, body []byte) error {
+		file, err := os.Create(config.BlossomAssetsPath + sha256)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(file, bytes.NewReader(body)); err != nil {
+			return err
+		}
+		return nil
+	})
+	bl.LoadBlob = append(bl.LoadBlob, func(ctx context.Context, sha256 string) (io.Reader, error) {
+		return os.Open(config.BlossomAssetsPath + sha256)
+	})
+	bl.DeleteBlob = append(bl.DeleteBlob, func(ctx context.Context, sha256 string) error {
+		return os.Remove(config.BlossomAssetsPath + sha256)
+	})
+	bl.RejectUpload = append(bl.RejectUpload, func(ctx context.Context, event *nostr.Event, size int, ext string) (bool, string, int) {
+		if event.PubKey == config.OwnerPubkey {
+			return false, ext, size
+		}
+		return true, "Not allowed", 403
+	})
+
+	// WoT and archiving procedures
+	var wg sync.WaitGroup
+	wg.Add(1) // We expect one goroutine to finish
+	interval := time.Duration(config.RefreshInterval) * time.Hour
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	go func() {
+		refreshProfiles(ctx)
+		refreshTrustNetwork(ctx, relay)
+		wg.Done()
+		for {
+			if config.FetchSync {
+				archiveTrustedNotes(ctx, relay)
+			}
+			<-ticker.C // Wait for the ticker to tick
+			refreshProfiles(ctx)
+			refreshTrustNetwork(ctx, relay)
+		}
+	}()
+
+	// Wait for the first execution to complete
+	wg.Wait()
 
 	log.Println("🎉 Relay running on port", config.RelayPort)
 	err := http.ListenAndServe(":"+config.RelayPort, relay)
@@ -226,19 +257,21 @@ func LoadConfig() Config {
 	PowDMWhitelist, _ := strconv.Atoi(os.Getenv("POW_DM_WHITELIST"))
 
 	config := Config{
-		OwnerPubkey:      getEnv("OWNER_PUBKEY"),
-		RelayName:        getEnv("RELAY_NAME"),
-		RelayDescription: getEnv("RELAY_DESCRIPTION"),
-		RelayContact:     getEnv("RELAY_CONTACT"),
-		RelayIcon:        getEnv("RELAY_ICON"),
-		DBPath:           getEnv("DB_PATH"),
-		RelayURL:         getEnv("RELAY_URL"),
-		RelayPort:        getEnv("RELAY_PORT"),
-		RefreshInterval:  refreshInterval,
-		MinFollowers:     minFollowers,
-		FetchSync:        getEnv("FETCH_SYNC") == "TRUE",
-		PowWhitelist:     PowWhitelist,
-		PowDMWhitelist:   PowDMWhitelist,
+		OwnerPubkey:       getEnv("OWNER_PUBKEY"),
+		RelayName:         getEnv("RELAY_NAME"),
+		RelayDescription:  getEnv("RELAY_DESCRIPTION"),
+		RelayContact:      getEnv("RELAY_CONTACT"),
+		RelayIcon:         getEnv("RELAY_ICON"),
+		DBPath:            getEnv("DB_PATH"),
+		RelayURL:          getEnv("RELAY_URL"),
+		RelayPort:         getEnv("RELAY_PORT"),
+		RefreshInterval:   refreshInterval,
+		MinFollowers:      minFollowers,
+		FetchSync:         getEnv("FETCH_SYNC") == "TRUE",
+		PowWhitelist:      PowWhitelist,
+		PowDMWhitelist:    PowDMWhitelist,
+		BlossomAssetsPath: getEnv("BLOSSOM_ASSETS_PATH"),
+		BlossomPublicURL:  getEnv("BLOSSOM_PUBLIC_URL"),
 	}
 
 	return config

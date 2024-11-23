@@ -5,6 +5,8 @@ This is possible since writing is limited to the threads in which the owner has 
 
 Chronicle fits well in the Outbox model, so you can use it as your read/write relay, and it also automatically becomes a space-efficient backup relay.
 
+It also include a Blossom media server, so you can use it to store all your images and attachments.
+
 ## How it works
 
 Every incoming event is verified against some simple rules.  
@@ -14,12 +16,15 @@ A couple of options (_POW\_*_, see below) permit to whitelist an event and bypas
 
 If an event published by the owner refers to a conversation that is not yet known by the relay, it tries to fetch it.
 
+Blossom upload is restricted to the relay owner.
+
 ## Features highlight
 
 It works nicely as inbox/outbox/dm relay.  
 It is a space-efficient backup relay.  
 It offers spam protection by WoT.  
 It permits to load old notes with a "fetch sync" option.
+It includes a Blossom media server.
 
 ## Configure
 
@@ -56,6 +61,11 @@ FETCH_SYNC="FALSE"
 # Zero (0) disables WoT - not recommended!
 POW_WHITELIST=
 POW_DM_WHITELIST=
+
+# Define the external public url of the media server
+# and the local path where assets are stored
+BLOSSOM_PUBLIC_URL="http://localhost:3335"
+BLOSSOM_ASSETS_PATH="assets/"
 
 ```
 

@@ -1,4 +1,6 @@
 db/
 .env
+.env.production
 chronicle
 chronicle-linux-amd64
+assets/
