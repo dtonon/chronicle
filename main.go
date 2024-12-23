@@ -184,7 +184,7 @@ func main() {
 		}
 		return nil
 	})
-	bl.LoadBlob = append(bl.LoadBlob, func(ctx context.Context, sha256 string) (io.Reader, error) {
+	bl.LoadBlob = append(bl.LoadBlob, func(ctx context.Context, sha256 string) (io.ReadSeeker, error) {
 		return os.Open(config.BlossomAssetsPath + sha256)
 	})
 	bl.DeleteBlob = append(bl.DeleteBlob, func(ctx context.Context, sha256 string) error {
