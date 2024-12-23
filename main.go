@@ -64,7 +64,6 @@ var trustNetworkMap map[string]bool
 var pubkeyFollowerCount = make(map[string]int)
 var trustedNotes uint64
 var untrustedNotes uint64
-var relay *khatru.Relay
 
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
@@ -204,7 +203,7 @@ func main() {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	go func() {
-		refreshProfiles(ctx)
+		refreshProfiles(ctx, relay)
 		refreshTrustNetwork(ctx, relay)
 		wg.Done()
 		for {
@@ -212,7 +211,7 @@ func main() {
 				archiveTrustedNotes(ctx, relay)
 			}
 			<-ticker.C // Wait for the ticker to tick
-			refreshProfiles(ctx)
+			refreshProfiles(ctx, relay)
 			refreshTrustNetwork(ctx, relay)
 		}
 	}()

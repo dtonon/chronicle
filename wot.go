@@ -32,7 +32,7 @@ func updateTrustNetworkFilter() {
 	log.Println("🌐 WoT: trust network map updated with", len(trustNetwork), "keys")
 }
 
-func refreshProfiles(ctx context.Context) {
+func refreshProfiles(ctx context.Context, relay *khatru.Relay) {
 	for i := 0; i < len(trustNetwork); i += 200 {
 		timeout, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
