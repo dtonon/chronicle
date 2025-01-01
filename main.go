@@ -308,8 +308,8 @@ func acceptedEvent(event nostr.Event) bool {
 
 func fetchConversation(event nostr.Event) {
 	rootReference := nip10.GetThreadRoot(event.Tags)
-	if rootReference == nil || // It's not a reply
-		rootNotesList.Include(rootReference.Value()) { // It's archived
+	fmt.Println("fetchConversation - rootReference:", rootReference)
+	if rootReference == nil { // It's not a reply
 		return // We don't need the full conversation
 	}
 
