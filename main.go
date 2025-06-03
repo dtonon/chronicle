@@ -308,17 +308,23 @@ func acceptedEvent(event nostr.Event) bool {
 
 func fetchConversation(event nostr.Event) {
 	rootReference := nip10.GetThreadRoot(event.Tags)
-	fmt.Println("fetchConversation - rootReference:", rootReference)
-	if rootReference == nil { // It's not a reply
-		return // We don't need the full conversation
+
+	var eventID string
+	var eventRelay string
+
+	// It's a root post
+	if rootReference == nil {
+		eventID = event.ID
+
+		// It's a reply
+	} else {
+		eventID = rootReference.Value()
+		eventRelay = rootReference.Relay()
 	}
 
 	ctx := context.Background()
 	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-
-	eventID := rootReference.Value()
-	eventRelay := rootReference.Relay()
 
 	go func() {
 		filters := []nostr.Filter{
