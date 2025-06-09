@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -658,50 +657,27 @@ func processBlossomBackup(event nostr.Event) {
 		return
 	}
 
-	hashes := extractBlossomHashes(event.Content)
-	if len(hashes) == 0 {
+	// Extract all Blossom URLs directly from the event content
+	matches := blossomURLRegex.FindAllString(event.Content, -1)
+	if len(matches) == 0 {
 		return
 	}
 
 	// Process downloads asynchronously
 	go func() {
-		for _, hash := range hashes {
+		for _, url := range matches {
+			hashMatches := blossomURLRegex.FindStringSubmatch(url)
+			if len(hashMatches) < 2 {
+				continue
+			}
+			hash := hashMatches[1]
+
 			if isFileAlreadyDownloaded(hash) {
 				continue
 			}
 
-			possibleServers := []string{
-				"https://blossom.primal.net",
-				"https://blossom.nostr.build",
-				"https://cdn.satellite.earth",
-			}
-
-			// Also extract the original server from the event content
-			matches := blossomURLRegex.FindAllString(event.Content, -1)
-			for _, match := range matches {
-				if strings.Contains(match, hash) {
-					// Extract server URL
-					parts := strings.Split(match, "/")
-					if len(parts) >= 3 {
-						serverURL := strings.Join(parts[:3], "/")
-						possibleServers = append([]string{serverURL}, possibleServers...)
-					}
-					break
-				}
-			}
-
-			// Try downloading from servers
-			downloaded := false
-			for _, server := range possibleServers {
-				url := fmt.Sprintf("%s/%s", server, hash)
-				if err := downloadBlossomFile(url, hash); err == nil {
-					downloaded = true
-					break
-				}
-			}
-
-			if !downloaded {
-				log.Printf("⚠️  Failed to download Blossom file: %s", hash[:16]+"...")
+			if err := downloadBlossomFile(url, hash); err != nil {
+				log.Printf("⚠️  Failed to download Blossom file from %s: %v", url, err)
 			}
 		}
 	}()
