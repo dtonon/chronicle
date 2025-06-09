@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
 	"fmt"
 	"io"
@@ -10,7 +11,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -36,21 +40,23 @@ var (
 )
 
 type Config struct {
-	OwnerPubkey       string
-	RelayName         string
-	RelayDescription  string
-	DBPath            string
-	RelayURL          string
-	RelayPort         string
-	RefreshInterval   int
-	MinFollowers      int
-	FetchSync         bool
-	RelayContact      string
-	RelayIcon         string
-	PowWhitelist      int
-	PowDMWhitelist    int
-	BlossomAssetsPath string
-	BlossomPublicURL  string
+	OwnerPubkey        string
+	RelayName          string
+	RelayDescription   string
+	DBPath             string
+	RelayURL           string
+	RelayPort          string
+	RefreshInterval    int
+	MinFollowers       int
+	FetchSync          bool
+	RelayContact       string
+	RelayIcon          string
+	PowWhitelist       int
+	PowDMWhitelist     int
+	BlossomAssetsPath  string
+	BlossomPublicURL   string
+	BackupBlossomMedia bool
+	MaxFileSizeMB      int
 }
 
 var pool *nostr.SimplePool
@@ -65,6 +71,10 @@ var pubkeyFollowerCount = make(map[string]int)
 var trustedNotes uint64
 var untrustedNotes uint64
 
+var blossomURLRegex = regexp.MustCompile(`https?://[^/\s]+/([a-fA-F0-9]{64})(?:\.[a-zA-Z0-9]+)?`)
+var ownerBlossomTrackingFile string
+var ownerBlossomMutex sync.Mutex
+
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
 	magenta := "\033[91m"
@@ -72,8 +82,8 @@ func main() {
 	reset := "\033[0m"
 
 	art := magenta + `
-   ____ _                     _      _      
-  / ___| |__  _ __ ___  _ __ (_) ___| | ___ 
+   ____ _                     _      _
+  / ___| |__  _ __ ___  _ __ (_) ___| | ___
  | |   | '_ \| '__/ _ \| '_ \| |/ __| |/ _ \
  | |___| | | | | | (_) | | | | | (__| |  __/
   \____|_| |_|_|  \___/|_| |_|_|\___|_|\___|` + gray + `
@@ -113,6 +123,11 @@ func main() {
 		log.Println("🗣️  Monitoring", rootNotesList.Size(), "threads")
 	}
 
+	if config.BackupBlossomMedia {
+		initOwnerBlossomTracking()
+		log.Printf("📁 Blossom media backup enabled (max %d MB per file)", config.MaxFileSizeMB)
+	}
+
 	relay.RejectEvent = append(relay.RejectEvent,
 		policies.RejectEventsWithBase64Media,
 		policies.EventIPRateLimiter(5, time.Minute*1, 30),
@@ -135,6 +150,7 @@ func main() {
 			addEventToRootList(*event)
 			go fetchQuotedEvents(*event)
 			go fetchConversation(*event)
+			go processBlossomBackup(*event)
 			return false, ""
 		}
 		return true, "event not allowed"
@@ -181,6 +197,12 @@ func main() {
 		if _, err := io.Copy(file, bytes.NewReader(body)); err != nil {
 			return err
 		}
+
+		// Track owner's uploaded files
+		if config.BackupBlossomMedia {
+			trackOwnerBlossomFile(sha256)
+		}
+
 		return nil
 	})
 	bl.LoadBlob = append(bl.LoadBlob, func(ctx context.Context, sha256 string) (io.ReadSeeker, error) {
@@ -251,26 +273,37 @@ func LoadConfig() Config {
 		os.Setenv("POW_DM_WHITELIST", "999")
 	}
 
+	if os.Getenv("BACKUP_BLOSSOM_MEDIA") == "" {
+		os.Setenv("BACKUP_BLOSSOM_MEDIA", "FALSE")
+	}
+
+	if os.Getenv("MAX_FILE_SIZE_MB") == "" {
+		os.Setenv("MAX_FILE_SIZE_MB", "10")
+	}
+
 	minFollowers, _ := strconv.Atoi(os.Getenv("MIN_FOLLOWERS"))
 	PowWhitelist, _ := strconv.Atoi(os.Getenv("POW_WHITELIST"))
 	PowDMWhitelist, _ := strconv.Atoi(os.Getenv("POW_DM_WHITELIST"))
+	maxFileSizeMB, _ := strconv.Atoi(os.Getenv("MAX_FILE_SIZE_MB"))
 
 	config := Config{
-		OwnerPubkey:       getEnv("OWNER_PUBKEY"),
-		RelayName:         getEnv("RELAY_NAME"),
-		RelayDescription:  getEnv("RELAY_DESCRIPTION"),
-		RelayContact:      getEnv("RELAY_CONTACT"),
-		RelayIcon:         getEnv("RELAY_ICON"),
-		DBPath:            getEnv("DB_PATH"),
-		RelayURL:          getEnv("RELAY_URL"),
-		RelayPort:         getEnv("RELAY_PORT"),
-		RefreshInterval:   refreshInterval,
-		MinFollowers:      minFollowers,
-		FetchSync:         getEnv("FETCH_SYNC") == "TRUE",
-		PowWhitelist:      PowWhitelist,
-		PowDMWhitelist:    PowDMWhitelist,
-		BlossomAssetsPath: getEnv("BLOSSOM_ASSETS_PATH"),
-		BlossomPublicURL:  getEnv("BLOSSOM_PUBLIC_URL"),
+		OwnerPubkey:        getEnv("OWNER_PUBKEY"),
+		RelayName:          getEnv("RELAY_NAME"),
+		RelayDescription:   getEnv("RELAY_DESCRIPTION"),
+		RelayContact:       getEnv("RELAY_CONTACT"),
+		RelayIcon:          getEnv("RELAY_ICON"),
+		DBPath:             getEnv("DB_PATH"),
+		RelayURL:           getEnv("RELAY_URL"),
+		RelayPort:          getEnv("RELAY_PORT"),
+		RefreshInterval:    refreshInterval,
+		MinFollowers:       minFollowers,
+		FetchSync:          getEnv("FETCH_SYNC") == "TRUE",
+		PowWhitelist:       PowWhitelist,
+		PowDMWhitelist:     PowDMWhitelist,
+		BlossomAssetsPath:  getEnv("BLOSSOM_ASSETS_PATH"),
+		BlossomPublicURL:   getEnv("BLOSSOM_PUBLIC_URL"),
+		BackupBlossomMedia: getEnv("BACKUP_BLOSSOM_MEDIA") == "TRUE",
+		MaxFileSizeMB:      maxFileSizeMB,
 	}
 
 	return config
@@ -460,4 +493,216 @@ func saveEvent(ctx context.Context, event nostr.Event) bool {
 	}
 	wdb.Publish(ctx, event)
 	return true
+}
+
+// Blossom backup functionality
+
+func initOwnerBlossomTracking() {
+	ownerBlossomTrackingFile = filepath.Join(config.DBPath, "owner_blossom")
+
+	if _, err := os.Stat(ownerBlossomTrackingFile); os.IsNotExist(err) {
+		log.Println("🗂️  Bootstrapping owner Blossom file tracking...")
+		bootstrapOwnerBlossomFiles()
+	} else {
+		log.Println("🗂️  Owner Blossom tracking file found")
+	}
+}
+
+func bootstrapOwnerBlossomFiles() {
+	ctx := context.Background()
+
+	filter := nostr.Filter{
+		Authors: []string{config.OwnerPubkey},
+	}
+
+	eventChan, err := wdb.QueryEvents(ctx, filter)
+	if err != nil {
+		log.Printf("Error querying owner events for Blossom bootstrap: %v", err)
+		return
+	}
+
+	hashSet := make(map[string]bool)
+
+	for event := range eventChan {
+		hashes := extractBlossomHashes(event.Content)
+		for _, hash := range hashes {
+			hashSet[hash] = true
+		}
+	}
+
+	file, err := os.Create(ownerBlossomTrackingFile)
+	if err != nil {
+		log.Printf("Error creating owner Blossom tracking file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	count := 0
+	for hash := range hashSet {
+		file.WriteString(hash + "\n")
+		count++
+	}
+
+	log.Printf("📝 Bootstrapped %d owner Blossom files", count)
+}
+
+func extractBlossomHashes(content string) []string {
+	matches := blossomURLRegex.FindAllStringSubmatch(content, -1)
+	var hashes []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			hashes = append(hashes, match[1])
+		}
+	}
+
+	return hashes
+}
+
+func trackOwnerBlossomFile(hash string) {
+	ownerBlossomMutex.Lock()
+	defer ownerBlossomMutex.Unlock()
+
+	file, err := os.OpenFile(ownerBlossomTrackingFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Error opening owner Blossom tracking file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(hash + "\n"); err != nil {
+		log.Printf("Error writing to owner Blossom tracking file: %v", err)
+	}
+}
+
+func isFileAlreadyDownloaded(hash string) bool {
+	filePath := filepath.Join(config.BlossomAssetsPath, hash)
+	_, err := os.Stat(filePath)
+	return !os.IsNotExist(err)
+}
+
+func downloadBlossomFile(url, hash string) error {
+	if isFileAlreadyDownloaded(hash) {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	if resp.ContentLength > 0 {
+		maxSize := int64(config.MaxFileSizeMB * 1024 * 1024)
+		if resp.ContentLength > maxSize {
+			return fmt.Errorf("file too large: %d bytes (max %d MB)", resp.ContentLength, config.MaxFileSizeMB)
+		}
+	}
+
+	tempFile := filepath.Join(config.BlossomAssetsPath, hash+".tmp")
+	file, err := os.Create(tempFile)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		file.Close()
+		os.Remove(tempFile)
+	}()
+
+	// Use LimitReader to enforce max file size
+	maxSize := int64(config.MaxFileSizeMB * 1024 * 1024)
+	limitedReader := io.LimitReader(resp.Body, maxSize+1)
+
+	hasher := sha256.New()
+	teeReader := io.TeeReader(limitedReader, hasher)
+
+	written, err := io.Copy(file, teeReader)
+	if err != nil {
+		return err
+	}
+
+	if written > maxSize {
+		return fmt.Errorf("file too large: %d bytes (max %d MB)", written, config.MaxFileSizeMB)
+	}
+
+	calculatedHash := fmt.Sprintf("%x", hasher.Sum(nil))
+	if calculatedHash != hash {
+		return fmt.Errorf("hash mismatch: expected %s, got %s", hash, calculatedHash)
+	}
+
+	file.Close()
+
+	finalPath := filepath.Join(config.BlossomAssetsPath, hash)
+	if err := os.Rename(tempFile, finalPath); err != nil {
+		return err
+	}
+
+	log.Printf("📥 Downloaded Blossom file: %s (%d bytes)", hash[:16]+"...", written)
+	return nil
+}
+
+func processBlossomBackup(event nostr.Event) {
+	if !config.BackupBlossomMedia {
+		return
+	}
+
+	hashes := extractBlossomHashes(event.Content)
+	if len(hashes) == 0 {
+		return
+	}
+
+	// Process downloads asynchronously
+	go func() {
+		for _, hash := range hashes {
+			if isFileAlreadyDownloaded(hash) {
+				continue
+			}
+
+			possibleServers := []string{
+				"https://blossom.primal.net",
+				"https://blossom.nostr.build",
+				"https://cdn.satellite.earth",
+			}
+
+			// Also extract the original server from the event content
+			matches := blossomURLRegex.FindAllString(event.Content, -1)
+			for _, match := range matches {
+				if strings.Contains(match, hash) {
+					// Extract server URL
+					parts := strings.Split(match, "/")
+					if len(parts) >= 3 {
+						serverURL := strings.Join(parts[:3], "/")
+						possibleServers = append([]string{serverURL}, possibleServers...)
+					}
+					break
+				}
+			}
+
+			// Try downloading from servers
+			downloaded := false
+			for _, server := range possibleServers {
+				url := fmt.Sprintf("%s/%s", server, hash)
+				if err := downloadBlossomFile(url, hash); err == nil {
+					downloaded = true
+					break
+				}
+			}
+
+			if !downloaded {
+				log.Printf("⚠️  Failed to download Blossom file: %s", hash[:16]+"...")
+			}
+		}
+	}()
 }
