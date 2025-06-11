@@ -379,6 +379,7 @@ func fetchConversation(event nostr.Event) {
 		for ev := range pool.SubMany(timeout, append([]string{eventRelay}, seedRelays...), filters) {
 			saveEvent(ctx, *ev.Event)
 			go fetchQuotedEvents(*ev.Event)
+			go processBlossomBackup(*ev.Event)
 		}
 	}()
 
@@ -422,6 +423,7 @@ func fetchQuotedEvents(event nostr.Event) {
 
 		for ev := range pool.SubManyEose(timeout, append(quoteRelays, seedRelays...), filters) {
 			saveEvent(ctx, *ev.Event)
+			go processBlossomBackup(*ev.Event)
 		}
 	}()
 
