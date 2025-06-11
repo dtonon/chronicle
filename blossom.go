@@ -25,7 +25,7 @@ func initOwnerBlossomTracking() {
 	ownerBlossomTrackingFile = filepath.Join(config.DBPath, "owner_blossom")
 
 	if _, err := os.Stat(ownerBlossomTrackingFile); os.IsNotExist(err) {
-		log.Println("🗂️  Bootstrapping owner Blossom file tracking...")
+		log.Println("🗂️  Bootstrapping owner Blossom file tracking")
 		bootstrapOwnerBlossomFiles()
 	} else {
 		log.Println("🗂️  Owner Blossom tracking file found")
@@ -184,7 +184,7 @@ func getUserWriteRelays(authorPubkey string) []string {
 
 	filter := nostr.Filter{
 		Authors: []string{authorPubkey},
-		Kinds:   []int{10002}, // NIP-65 relay list metadata
+		Kinds:   []int{10002},
 		Limit:   1,
 	}
 
@@ -216,9 +216,6 @@ func getUserWriteRelays(authorPubkey string) []string {
 	var writeRelays []string
 	for _, tag := range relayListEvent.Tags.GetAll([]string{"r"}) {
 		if len(tag) >= 2 && tag[1] != "" {
-			// If no third parameter, it's read+write
-			// If third parameter is "write", it's write-only
-			// If third parameter is "read", skip it
 			if len(tag) < 3 || tag[2] == "" || tag[2] == "write" {
 				writeRelays = append(writeRelays, tag[1])
 			}
@@ -228,37 +225,18 @@ func getUserWriteRelays(authorPubkey string) []string {
 	return writeRelays
 }
 
-func testMediaExists(servers []string, hash string) []string {
-	var workingServers []string
-
+func tryDownloadFromServers(servers []string, hash string) bool {
 	for _, server := range servers {
 		url := fmt.Sprintf("%s/%s", server, hash)
-
-		// Send HEAD request to check if file exists without downloading
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
-		if err != nil {
-			cancel()
-			continue
-		}
-
-		resp, err := http.DefaultClient.Do(req)
-		cancel()
-
-		if err != nil {
-			continue
-		}
-		resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			workingServers = append(workingServers, server)
+		if err := downloadBlossomFile(url, hash); err == nil {
+			log.Printf("✅ Downloaded from server: %s", server)
+			return true
 		}
 	}
-
-	return workingServers
+	return false
 }
 
-func getAuthorBlossomServers(authorPubkey string, hash string) []string {
+func downloadFromAltBlossomServers(authorPubkey string, hash string) bool {
 	ctx := context.Background()
 	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -281,10 +259,11 @@ func getAuthorBlossomServers(authorPubkey string, hash string) []string {
 
 	if serverListEvent != nil {
 		servers := extractServersFromEvent(serverListEvent)
-		workingServers := testMediaExists(servers, hash)
-		if len(workingServers) > 0 {
-			log.Printf("🎯 Found working servers in local DB for %s", authorPubkey[:8]+"...")
-			return workingServers
+		if len(servers) > 0 {
+			log.Printf("🔍 Trying servers from local DB for %s", authorPubkey[:8]+"...")
+			if tryDownloadFromServers(servers, hash) {
+				return true
+			}
 		}
 	}
 
@@ -299,17 +278,18 @@ func getAuthorBlossomServers(authorPubkey string, hash string) []string {
 	if serverListEvent != nil {
 		saveEvent(ctx, *serverListEvent)
 		servers := extractServersFromEvent(serverListEvent)
-		workingServers := testMediaExists(servers, hash)
-		if len(workingServers) > 0 {
-			log.Printf("🎯 Found working servers in seedRelays for %s", authorPubkey[:8]+"...")
-			return workingServers
+		if len(servers) > 0 {
+			log.Printf("🔍 Trying servers from seedRelays for %s", authorPubkey[:8]+"...")
+			if tryDownloadFromServers(servers, hash) {
+				return true
+			}
 		}
 	}
 
 	// Step 3: Try user's write relays (NIP-65)
 	writeRelays := getUserWriteRelays(authorPubkey)
 	if len(writeRelays) > 0 {
-		log.Printf("🔍 Searching user's write relays for %s server list...", authorPubkey[:8]+"...")
+		log.Printf("🔍 Searching user's write relays for %s server list", authorPubkey[:8]+"...")
 
 		serverListEvent = nil
 		for ev := range pool.SubManyEose(timeout, writeRelays, []nostr.Filter{serverFilter}) {
@@ -321,15 +301,16 @@ func getAuthorBlossomServers(authorPubkey string, hash string) []string {
 		if serverListEvent != nil {
 			saveEvent(ctx, *serverListEvent)
 			servers := extractServersFromEvent(serverListEvent)
-			workingServers := testMediaExists(servers, hash)
-			if len(workingServers) > 0 {
-				log.Printf("🎯 Found working servers in user's write relays for %s", authorPubkey[:8]+"...")
-				return workingServers
+			if len(servers) > 0 {
+				log.Printf("🔍 Trying servers from user's write relays for %s", authorPubkey[:8]+"...")
+				if tryDownloadFromServers(servers, hash) {
+					return true
+				}
 			}
 		}
 	}
 
-	return nil
+	return false
 }
 
 func extractServersFromEvent(event *nostr.Event) []string {
@@ -371,28 +352,11 @@ func processBlossomBackup(event nostr.Event) {
 				continue // Success, move to next file
 			}
 
-			log.Printf("🔄 Original URL failed for %s, searching for verified fallback servers...", hash[:16]+"...")
+			log.Printf("🔄 Original URL failed for %s, trying author's fallback servers", hash[:16]+"...")
 
-			// Use the comprehensive search with validation
-			workingServers := getAuthorBlossomServers(event.PubKey, hash)
-			if len(workingServers) == 0 {
-				log.Printf("⚠️  No working fallback servers found for author %s", event.PubKey[:8]+"...")
-				continue
-			}
-
-			// Try downloading from the first working server
-			downloaded := false
-			for _, server := range workingServers {
-				fallbackURL := fmt.Sprintf("%s/%s", server, hash)
-				if err := downloadBlossomFile(fallbackURL, hash); err == nil {
-					log.Printf("✅ Downloaded from verified server: %s", server)
-					downloaded = true
-					break
-				}
-			}
-
-			if !downloaded {
-				log.Printf("⚠️  Failed to download Blossom file %s even from verified servers", hash[:16]+"...")
+			// Try the comprehensive tier-by-tier approach
+			if !downloadFromAltBlossomServers(event.PubKey, hash) {
+				log.Printf("⚠️  Failed to download Blossom file %s from all available sources", hash[:16]+"...")
 			}
 		}
 	}()
