@@ -35,7 +35,7 @@ func initOwnerBlossomTracking() {
 
 func bootstrapOwnerBlossomFiles() {
 	hashSet := make(map[string]bool)
-	
+
 	// Step 1: Scan existing files in BLOSSOM_ASSETS_PATH
 	filesFound := 0
 	if entries, err := os.ReadDir(config.BlossomAssetsPath); err == nil {
@@ -296,10 +296,10 @@ func getUserWriteRelays(authorPubkey string) []string {
 	return writeRelays
 }
 
-func tryDownloadFromServers(servers []string, hash string) bool {
+func tryDownloadFromServers(servers []string, hash string, enforceMaxSize bool) bool {
 	for _, server := range servers {
 		url := fmt.Sprintf("%s/%s", server, hash)
-		if err := downloadBlossomFile(url, hash, true); err == nil {
+		if err := downloadBlossomFile(url, hash, enforceMaxSize); err == nil {
 			log.Printf("✅ Downloaded from server: %s", server)
 			return true
 		}
@@ -307,7 +307,7 @@ func tryDownloadFromServers(servers []string, hash string) bool {
 	return false
 }
 
-func downloadFromAltBlossomServers(authorPubkey string, hash string) bool {
+func downloadFromAltBlossomServers(authorPubkey string, hash string, enforceMaxSize bool) bool {
 	ctx := context.Background()
 	timeout, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -332,7 +332,7 @@ func downloadFromAltBlossomServers(authorPubkey string, hash string) bool {
 		servers := extractServersFromEvent(serverListEvent)
 		if len(servers) > 0 {
 			log.Printf("🔍 Trying servers from local DB for %s", authorPubkey[:8]+"...")
-			if tryDownloadFromServers(servers, hash) {
+			if tryDownloadFromServers(servers, hash, enforceMaxSize) {
 				return true
 			}
 		}
@@ -351,7 +351,7 @@ func downloadFromAltBlossomServers(authorPubkey string, hash string) bool {
 		servers := extractServersFromEvent(serverListEvent)
 		if len(servers) > 0 {
 			log.Printf("🔍 Trying servers from seedRelays for %s", authorPubkey[:8]+"...")
-			if tryDownloadFromServers(servers, hash) {
+			if tryDownloadFromServers(servers, hash, enforceMaxSize) {
 				return true
 			}
 		}
@@ -374,7 +374,7 @@ func downloadFromAltBlossomServers(authorPubkey string, hash string) bool {
 			servers := extractServersFromEvent(serverListEvent)
 			if len(servers) > 0 {
 				log.Printf("🔍 Trying servers from user's write relays for %s", authorPubkey[:8]+"...")
-				if tryDownloadFromServers(servers, hash) {
+				if tryDownloadFromServers(servers, hash, enforceMaxSize) {
 					return true
 				}
 			}
@@ -407,6 +407,9 @@ func processBlossomBackup(event nostr.Event) {
 
 	// Process downloads asynchronously
 	go func() {
+		// Check if this is owner media (no size limit for owner)
+		isOwnerEvent := event.PubKey == config.OwnerPubkey
+		
 		for _, originalURL := range matches {
 			hashMatches := blossomURLRegex.FindStringSubmatch(originalURL)
 			if len(hashMatches) < 2 {
@@ -419,14 +422,15 @@ func processBlossomBackup(event nostr.Event) {
 			}
 
 			// Try downloading from the original URL first
-			if err := downloadBlossomFile(originalURL, hash, true); err == nil {
+			// No size limit for owner's files, enforce for others
+			if err := downloadBlossomFile(originalURL, hash, !isOwnerEvent); err == nil {
 				continue // Success, move to next file
 			}
 
-			log.Printf("🔄 Original URL failed for %s, trying author's fallback servers", hash[:16]+"...")
+			log.Printf("🔄 Original URL %s failed, trying author's fallback servers", originalURL)
 
 			// Try the comprehensive tier-by-tier approach
-			if !downloadFromAltBlossomServers(event.PubKey, hash) {
+			if !downloadFromAltBlossomServers(event.PubKey, hash, !isOwnerEvent) {
 				log.Printf("⚠️  Failed to download Blossom file %s from all available sources", hash[:16]+"...")
 			}
 		}
