@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,8 +34,31 @@ func initOwnerBlossomTracking() {
 }
 
 func bootstrapOwnerBlossomFiles() {
-	ctx := context.Background()
+	hashSet := make(map[string]bool)
+	
+	// Step 1: Scan existing files in BLOSSOM_ASSETS_PATH
+	filesFound := 0
+	if entries, err := os.ReadDir(config.BlossomAssetsPath); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				filename := entry.Name()
+				// Skip temporary files and validate hash format (64 hex chars)
+				if !strings.HasSuffix(filename, ".tmp") && len(filename) == 64 {
+					// Validate it's a valid hex hash
+					if _, err := filepath.Match("[a-fA-F0-9]*", filename); err == nil {
+						hashSet[filename] = true
+						filesFound++
+					}
+				}
+			}
+		}
+		log.Printf("🗂️  Found %d existing owner Blossom files in assets directory", filesFound)
+	} else {
+		log.Printf("Warning: Could not read assets directory: %v", err)
+	}
 
+	// Step 2: Scan owner events for additional Blossom URLs
+	ctx := context.Background()
 	filter := nostr.Filter{
 		Authors: []string{config.OwnerPubkey},
 	}
@@ -45,15 +69,54 @@ func bootstrapOwnerBlossomFiles() {
 		return
 	}
 
-	hashSet := make(map[string]bool)
+	missingFiles := make(map[string][]string) // hash -> []urls
+	eventHashes := 0
 
 	for event := range eventChan {
 		hashes := extractBlossomHashes(event.Content)
 		for _, hash := range hashes {
+			eventHashes++
+			if !hashSet[hash] {
+				// Extract original URL for download attempt
+				matches := blossomURLRegex.FindAllString(event.Content, -1)
+				for _, url := range matches {
+					if strings.Contains(url, hash) {
+						missingFiles[hash] = append(missingFiles[hash], url)
+						break
+					}
+				}
+			}
 			hashSet[hash] = true
 		}
 	}
 
+	log.Printf("🔍 Found %d Blossom hashes in %d owner events", eventHashes, len(hashSet)-filesFound)
+
+	// Step 3: Attempt to download missing files
+	downloaded := 0
+	failed := 0
+
+	for hash, urls := range missingFiles {
+		success := false
+		for _, url := range urls {
+			if err := downloadBlossomFile(url, hash, false); err == nil {
+				downloaded++
+				log.Printf("✅ Downloaded missing owner file: %s", hash[:16]+"...")
+				success = true
+				break
+			}
+		}
+		if !success {
+			failed++
+			log.Printf("❌ Failed to download owner file: %s", hash[:16]+"...")
+		}
+	}
+
+	if len(missingFiles) > 0 {
+		log.Printf("📥 Download results: %d succeeded, %d failed", downloaded, failed)
+	}
+
+	// Step 4: Write tracking file with all discovered hashes
 	file, err := os.Create(ownerBlossomTrackingFile)
 	if err != nil {
 		log.Printf("Error creating owner Blossom tracking file: %v", err)
@@ -61,13 +124,11 @@ func bootstrapOwnerBlossomFiles() {
 	}
 	defer file.Close()
 
-	count := 0
 	for hash := range hashSet {
 		file.WriteString(hash + "\n")
-		count++
 	}
 
-	log.Printf("📝 Bootstrapped %d owner Blossom files", count)
+	log.Printf("📝 Bootstrapped %d total owner Blossom files (%d existing + %d from events)", len(hashSet), filesFound, len(hashSet)-filesFound)
 }
 
 func extractBlossomHashes(content string) []string {
@@ -105,7 +166,7 @@ func isFileAlreadyDownloaded(hash string) bool {
 	return !os.IsNotExist(err)
 }
 
-func downloadBlossomFile(url, hash string) error {
+func downloadBlossomFile(url, hash string, enforceMaxSize bool) error {
 	if isFileAlreadyDownloaded(hash) {
 		return nil
 	}
@@ -128,7 +189,7 @@ func downloadBlossomFile(url, hash string) error {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 	}
 
-	if resp.ContentLength > 0 {
+	if enforceMaxSize && resp.ContentLength > 0 {
 		maxSize := int64(config.MaxFileSizeMB * 1024 * 1024)
 		if resp.ContentLength > maxSize {
 			return fmt.Errorf("file too large: %d bytes (max %d MB)", resp.ContentLength, config.MaxFileSizeMB)
@@ -145,20 +206,30 @@ func downloadBlossomFile(url, hash string) error {
 		os.Remove(tempFile)
 	}()
 
-	// Use LimitReader to enforce max file size
-	maxSize := int64(config.MaxFileSizeMB * 1024 * 1024)
-	limitedReader := io.LimitReader(resp.Body, maxSize+1)
-
 	hasher := sha256.New()
-	teeReader := io.TeeReader(limitedReader, hasher)
+	var written int64
 
-	written, err := io.Copy(file, teeReader)
-	if err != nil {
-		return err
-	}
+	if enforceMaxSize {
+		// Use LimitReader to enforce max file size
+		maxSize := int64(config.MaxFileSizeMB * 1024 * 1024)
+		limitedReader := io.LimitReader(resp.Body, maxSize+1)
+		teeReader := io.TeeReader(limitedReader, hasher)
 
-	if written > maxSize {
-		return fmt.Errorf("file too large: %d bytes (max %d MB)", written, config.MaxFileSizeMB)
+		written, err = io.Copy(file, teeReader)
+		if err != nil {
+			return err
+		}
+
+		if written > maxSize {
+			return fmt.Errorf("file too large: %d bytes (max %d MB)", written, config.MaxFileSizeMB)
+		}
+	} else {
+		// No size limit for owner files during bootstrap
+		teeReader := io.TeeReader(resp.Body, hasher)
+		written, err = io.Copy(file, teeReader)
+		if err != nil {
+			return err
+		}
 	}
 
 	calculatedHash := fmt.Sprintf("%x", hasher.Sum(nil))
@@ -228,7 +299,7 @@ func getUserWriteRelays(authorPubkey string) []string {
 func tryDownloadFromServers(servers []string, hash string) bool {
 	for _, server := range servers {
 		url := fmt.Sprintf("%s/%s", server, hash)
-		if err := downloadBlossomFile(url, hash); err == nil {
+		if err := downloadBlossomFile(url, hash, true); err == nil {
 			log.Printf("✅ Downloaded from server: %s", server)
 			return true
 		}
@@ -348,7 +419,7 @@ func processBlossomBackup(event nostr.Event) {
 			}
 
 			// Try downloading from the original URL first
-			if err := downloadBlossomFile(originalURL, hash); err == nil {
+			if err := downloadBlossomFile(originalURL, hash, true); err == nil {
 				continue // Success, move to next file
 			}
 
