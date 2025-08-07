@@ -67,7 +67,6 @@ var pubkeyFollowerCount = make(map[string]int)
 var trustedNotes uint64
 var untrustedNotes uint64
 
-
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
 	magenta := "\033[91m"
@@ -266,18 +265,18 @@ func LoadConfig() Config {
 		os.Setenv("POW_DM_WHITELIST", "999")
 	}
 
-	if os.Getenv("BACKUP_BLOSSOM_MEDIA") == "" {
-		os.Setenv("BACKUP_BLOSSOM_MEDIA", "FALSE")
+	if os.Getenv("BLOSSOM_BACKUP_MEDIA") == "" {
+		os.Setenv("BLOSSOM_BACKUP_MEDIA", "FALSE")
 	}
 
-	if os.Getenv("MAX_FILE_SIZE_MB") == "" {
-		os.Setenv("MAX_FILE_SIZE_MB", "10")
+	if os.Getenv("BLOSSOM_MAX_FILE_MB") == "" {
+		os.Setenv("BLOSSOM_MAX_FILE_MB", "10")
 	}
 
 	minFollowers, _ := strconv.Atoi(os.Getenv("MIN_FOLLOWERS"))
 	PowWhitelist, _ := strconv.Atoi(os.Getenv("POW_WHITELIST"))
 	PowDMWhitelist, _ := strconv.Atoi(os.Getenv("POW_DM_WHITELIST"))
-	maxFileSizeMB, _ := strconv.Atoi(os.Getenv("MAX_FILE_SIZE_MB"))
+	maxFileSizeMB, _ := strconv.Atoi(os.Getenv("BLOSSOM_MAX_FILE_MB"))
 
 	config := Config{
 		OwnerPubkey:        getEnv("OWNER_PUBKEY"),
@@ -295,7 +294,7 @@ func LoadConfig() Config {
 		PowDMWhitelist:     PowDMWhitelist,
 		BlossomAssetsPath:  getEnv("BLOSSOM_ASSETS_PATH"),
 		BlossomPublicURL:   getEnv("BLOSSOM_PUBLIC_URL"),
-		BackupBlossomMedia: getEnv("BACKUP_BLOSSOM_MEDIA") == "TRUE",
+		BackupBlossomMedia: getEnv("BLOSSOM_BACKUP_MEDIA") == "TRUE",
 		MaxFileSizeMB:      maxFileSizeMB,
 	}
 
@@ -489,4 +488,3 @@ func saveEvent(ctx context.Context, event nostr.Event) bool {
 	wdb.Publish(ctx, event)
 	return true
 }
-
