@@ -1,11 +1,11 @@
 ![image](logo.png)
 
-Chronicle is a personal relay [Nostr](https://njump.me), built on the [Khatru](https://khatru.nostr.technology) framework, that stores complete conversations in which the owner has taken part and nothing else: pure signal.  
+Chronicle is a personal relay [Nostr](https://njump.me), built on the [Khatru](https://khatru.nostr.technology) framework, that stores complete conversations, media included, in which the owner has taken part and nothing else: pure signal.  
 This is possible since writing is limited to the threads in which the owner has partecipated (either as an original poster or with a reply/zap/reaction), and only to his trusted network (WoT), to protect against spam.
 
 Chronicle fits well in the Outbox model, so you can use it as your read/write relay, and it also automatically becomes a space-efficient backup relay.
 
-It also include a Blossom media server, so you can use it to store all your images and attachments.
+It also include a Blossom media server, so you can use it to store all your images and attachments; the Blossom server can also backup media for other authors, to create a fallback if the original blobs got lost (the BUD/NIP that manages the retrieval process is in progress).
 
 ## How it works
 
@@ -25,6 +25,7 @@ It is a space-efficient backup relay.
 It offers spam protection by WoT.  
 It permits to load old notes with a "fetch sync" option.
 It includes a Blossom media server.
+It backup other authors media.
 
 ## Configure
 
@@ -67,6 +68,8 @@ POW_DM_WHITELIST=
 BLOSSOM_PUBLIC_URL="http://localhost:3335"
 BLOSSOM_ASSETS_PATH="assets/"
 
+# Enable automatic backup of media for other authors
+BLOSSOM_BACKUP_MEDIA="TRUE"
 ```
 
 ## Build
