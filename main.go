@@ -36,21 +36,23 @@ var (
 )
 
 type Config struct {
-	OwnerPubkey       string
-	RelayName         string
-	RelayDescription  string
-	DBPath            string
-	RelayURL          string
-	RelayPort         string
-	RefreshInterval   int
-	MinFollowers      int
-	FetchSync         bool
-	RelayContact      string
-	RelayIcon         string
-	PowWhitelist      int
-	PowDMWhitelist    int
-	BlossomAssetsPath string
-	BlossomPublicURL  string
+	OwnerPubkey        string
+	RelayName          string
+	RelayDescription   string
+	DBPath             string
+	RelayURL           string
+	RelayPort          string
+	RefreshInterval    int
+	MinFollowers       int
+	FetchSync          bool
+	RelayContact       string
+	RelayIcon          string
+	PowWhitelist       int
+	PowDMWhitelist     int
+	BlossomAssetsPath  string
+	BlossomPublicURL   string
+	BackupBlossomMedia bool
+	MaxFileSizeMB      int
 }
 
 var pool *nostr.SimplePool
@@ -72,8 +74,8 @@ func main() {
 	reset := "\033[0m"
 
 	art := magenta + `
-   ____ _                     _      _      
-  / ___| |__  _ __ ___  _ __ (_) ___| | ___ 
+   ____ _                     _      _
+  / ___| |__  _ __ ___  _ __ (_) ___| | ___
  | |   | '_ \| '__/ _ \| '_ \| |/ __| |/ _ \
  | |___| | | | | | (_) | | | | | (__| |  __/
   \____|_| |_|_|  \___/|_| |_|_|\___|_|\___|` + gray + `
@@ -113,6 +115,11 @@ func main() {
 		log.Println("🗣️  Monitoring", rootNotesList.Size(), "threads")
 	}
 
+	if config.BackupBlossomMedia {
+		initOwnerBlossomTracking()
+		log.Printf("📁 Blossom media backup enabled (max %d MB per file)", config.MaxFileSizeMB)
+	}
+
 	relay.RejectEvent = append(relay.RejectEvent,
 		policies.RejectEventsWithBase64Media,
 		policies.EventIPRateLimiter(5, time.Minute*1, 30),
@@ -135,6 +142,7 @@ func main() {
 			addEventToRootList(*event)
 			go fetchQuotedEvents(*event)
 			go fetchConversation(*event)
+			go processBlossomBackup(*event)
 			return false, ""
 		}
 		return true, "event not allowed"
@@ -181,6 +189,12 @@ func main() {
 		if _, err := io.Copy(file, bytes.NewReader(body)); err != nil {
 			return err
 		}
+
+		// Track owner's uploaded files
+		if config.BackupBlossomMedia {
+			trackOwnerBlossomFile(sha256)
+		}
+
 		return nil
 	})
 	bl.LoadBlob = append(bl.LoadBlob, func(ctx context.Context, sha256 string) (io.ReadSeeker, error) {
@@ -251,26 +265,37 @@ func LoadConfig() Config {
 		os.Setenv("POW_DM_WHITELIST", "999")
 	}
 
+	if os.Getenv("BLOSSOM_BACKUP_MEDIA") == "" {
+		os.Setenv("BLOSSOM_BACKUP_MEDIA", "FALSE")
+	}
+
+	if os.Getenv("BLOSSOM_MAX_FILE_MB") == "" {
+		os.Setenv("BLOSSOM_MAX_FILE_MB", "10")
+	}
+
 	minFollowers, _ := strconv.Atoi(os.Getenv("MIN_FOLLOWERS"))
 	PowWhitelist, _ := strconv.Atoi(os.Getenv("POW_WHITELIST"))
 	PowDMWhitelist, _ := strconv.Atoi(os.Getenv("POW_DM_WHITELIST"))
+	maxFileSizeMB, _ := strconv.Atoi(os.Getenv("BLOSSOM_MAX_FILE_MB"))
 
 	config := Config{
-		OwnerPubkey:       getEnv("OWNER_PUBKEY"),
-		RelayName:         getEnv("RELAY_NAME"),
-		RelayDescription:  getEnv("RELAY_DESCRIPTION"),
-		RelayContact:      getEnv("RELAY_CONTACT"),
-		RelayIcon:         getEnv("RELAY_ICON"),
-		DBPath:            getEnv("DB_PATH"),
-		RelayURL:          getEnv("RELAY_URL"),
-		RelayPort:         getEnv("RELAY_PORT"),
-		RefreshInterval:   refreshInterval,
-		MinFollowers:      minFollowers,
-		FetchSync:         getEnv("FETCH_SYNC") == "TRUE",
-		PowWhitelist:      PowWhitelist,
-		PowDMWhitelist:    PowDMWhitelist,
-		BlossomAssetsPath: getEnv("BLOSSOM_ASSETS_PATH"),
-		BlossomPublicURL:  getEnv("BLOSSOM_PUBLIC_URL"),
+		OwnerPubkey:        getEnv("OWNER_PUBKEY"),
+		RelayName:          getEnv("RELAY_NAME"),
+		RelayDescription:   getEnv("RELAY_DESCRIPTION"),
+		RelayContact:       getEnv("RELAY_CONTACT"),
+		RelayIcon:          getEnv("RELAY_ICON"),
+		DBPath:             getEnv("DB_PATH"),
+		RelayURL:           getEnv("RELAY_URL"),
+		RelayPort:          getEnv("RELAY_PORT"),
+		RefreshInterval:    refreshInterval,
+		MinFollowers:       minFollowers,
+		FetchSync:          getEnv("FETCH_SYNC") == "TRUE",
+		PowWhitelist:       PowWhitelist,
+		PowDMWhitelist:     PowDMWhitelist,
+		BlossomAssetsPath:  getEnv("BLOSSOM_ASSETS_PATH"),
+		BlossomPublicURL:   getEnv("BLOSSOM_PUBLIC_URL"),
+		BackupBlossomMedia: getEnv("BLOSSOM_BACKUP_MEDIA") == "TRUE",
+		MaxFileSizeMB:      maxFileSizeMB,
 	}
 
 	return config
@@ -347,6 +372,7 @@ func fetchConversation(event nostr.Event) {
 		for ev := range pool.SubMany(timeout, append([]string{eventRelay}, seedRelays...), filters) {
 			saveEvent(ctx, *ev.Event)
 			go fetchQuotedEvents(*ev.Event)
+			go processBlossomBackup(*ev.Event)
 		}
 	}()
 
@@ -390,6 +416,7 @@ func fetchQuotedEvents(event nostr.Event) {
 
 		for ev := range pool.SubManyEose(timeout, append(quoteRelays, seedRelays...), filters) {
 			saveEvent(ctx, *ev.Event)
+			go processBlossomBackup(*ev.Event)
 		}
 	}()
 
