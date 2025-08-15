@@ -354,9 +354,6 @@ func fetchConversation(event nostr.Event) {
 	go func() {
 		filters := []nostr.Filter{
 			{
-				IDs: []string{eventID},
-			},
-			{
 				Kinds: []int{
 					nostr.KindArticle,
 					nostr.KindDeletion,
