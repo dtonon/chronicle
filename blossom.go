@@ -97,18 +97,15 @@ func bootstrapOwnerBlossomFiles() {
 	failed := 0
 
 	for hash, urls := range missingFiles {
-		success := false
 		for _, url := range urls {
 			if err := downloadBlossomFile(url, hash, false); err == nil {
 				downloaded++
 				log.Printf("✅ Downloaded missing owner file: %s", hash[:16]+"...")
-				success = true
 				break
+			} else {
+				failed++
+				log.Printf("❌ Failed to download owner file: %s - %s", urls, err)
 			}
-		}
-		if !success {
-			failed++
-			log.Printf("❌ Failed to download owner file: %s", hash[:16]+"...")
 		}
 	}
 
@@ -409,7 +406,7 @@ func processBlossomBackup(event nostr.Event) {
 	go func() {
 		// Check if this is owner media (no size limit for owner)
 		isOwnerEvent := event.PubKey == config.OwnerPubkey
-		
+
 		for _, originalURL := range matches {
 			hashMatches := blossomURLRegex.FindStringSubmatch(originalURL)
 			if len(hashMatches) < 2 {
