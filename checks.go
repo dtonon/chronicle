@@ -9,9 +9,9 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip13"
 )
 
-// acceptedEvent returns true if the event should be stored in the relay.
-// Owner events are always accepted. Other events require WoT membership or
-// sufficient PoW, and must belong to a valid tracked thread.
+// acceptedEvent returns true if the event should be stored in the relay
+// Owner events are always accepted. Other events must belong to a valid tracked
+// thread and pass WoT, PoW, or the implicit per-thread whitelist check
 func acceptedEvent(event nostr.Event) bool {
 	if event.PubKey == config.OwnerPubkey {
 		return true
@@ -24,9 +24,14 @@ func acceptedEvent(event nostr.Event) bool {
 		}
 		return false
 
-	} else if belongsToValidThread(event) &&
-		(belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowWhitelist) {
-		return true
+	} else if belongsToValidThread(event) {
+		if belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowWhitelist {
+			return true
+		}
+		rootRef := nip10.GetThreadRoot(event.Tags)
+		if rootRef != nil && isWhitelistedForThread(event.PubKey, rootRef.Value()) {
+			return true
+		}
 
 	}
 
@@ -35,7 +40,7 @@ func acceptedEvent(event nostr.Event) bool {
 
 // belongsToValidThread returns true if the event is part of a thread the owner
 // participated in. For text notes and articles it checks the root notes list;
-// for reactions, zaps and deletions it checks that the referenced event exists locally.
+// for reactions, zaps and deletions it checks that the referenced event exists locally
 func belongsToValidThread(event nostr.Event) bool {
 	eReference := nip10.GetThreadRoot(event.Tags)
 	if eReference == nil {
@@ -73,7 +78,7 @@ func belongsToValidThread(event nostr.Event) bool {
 }
 
 // isWhitelistedForThread checks if pubkey is whitelisted for a thread by verifying
-// that the owner has an event in that thread that tags the pubkey.
+// that the owner has an event in that thread that tags the pubkey
 func isWhitelistedForThread(pubkey string, rootEventID string) bool {
 	ctx := context.Background()
 	filter := nostr.Filter{
