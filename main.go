@@ -367,9 +367,11 @@ func fetchConversation(event nostr.Event) {
 		}
 
 		for ev := range pool.SubMany(timeout, append([]string{eventRelay}, seedRelays...), filters) {
-			saveEvent(ctx, *ev.Event)
-			go fetchQuotedEvents(*ev.Event)
-			go processBlossomBackup(*ev.Event)
+			if belongsToWotNetwork(*ev.Event) {
+				saveEvent(ctx, *ev.Event)
+				go fetchQuotedEvents(*ev.Event)
+				go processBlossomBackup(*ev.Event)
+			}
 		}
 	}()
 
