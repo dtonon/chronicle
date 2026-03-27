@@ -12,10 +12,10 @@ import (
 func belongsToWotNetwork(event nostr.Event) bool {
 	for _, pk := range trustNetwork {
 		if pk == event.PubKey {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func updateTrustNetworkFilter() {
