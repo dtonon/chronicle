@@ -22,7 +22,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip10"
-	"github.com/nbd-wtf/go-nostr/nip13"
 )
 
 //go:embed template/index.html
@@ -309,65 +308,6 @@ func getEnv(key string) string {
 	return value
 }
 
-func acceptedEvent(event nostr.Event) bool {
-	if event.PubKey == config.OwnerPubkey {
-		return true
-
-	} else if event.Kind == nostr.KindGiftWrap {
-		for _, tag := range event.Tags.GetAll([]string{"p"}) {
-			if tag[1] == config.OwnerPubkey {
-				return (belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowDMWhitelist)
-			}
-		}
-		return false
-
-	} else if belongsToValidThread(event) &&
-		(belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowWhitelist) {
-		return true
-
-	}
-
-	return false
-
-}
-
-
-func belongsToValidThread(event nostr.Event) bool {
-	eReference := nip10.GetThreadRoot(event.Tags)
-	if eReference == nil {
-		// We already accept root notes by owner
-		return false
-	}
-
-	if event.Kind == nostr.KindTextNote ||
-		event.Kind == nostr.KindArticle {
-
-		rootCheck := rootNotesList.Include(eReference.Value())
-		return rootCheck
-	}
-
-	// The event refers to a note in the thread
-	if event.Kind == nostr.KindDeletion ||
-		event.Kind == nostr.KindReaction ||
-		event.Kind == nostr.KindZapRequest ||
-		event.Kind == nostr.KindZap {
-
-		ctx := context.Background()
-		_, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
-		filter := nostr.Filter{
-			IDs: []string{eReference.Value()},
-		}
-		eventChan, _ := wdb.QueryEvents(ctx, filter)
-		for range eventChan {
-			return true
-		}
-	}
-
-	return false
-}
-
 func addEventToRootList(event nostr.Event) {
 	// Add only notes and articles to the root list
 	if event.Kind != nostr.KindTextNote &&
@@ -383,17 +323,4 @@ func addEventToRootList(event nostr.Event) {
 		rootReferenceValue = rootReference.Value()
 	}
 	rootNotesList.Add(rootReferenceValue)
-}
-
-func saveEvent(ctx context.Context, event nostr.Event) bool {
-	filter := nostr.Filter{IDs: []string{event.ID}}
-	eventChan, err := wdb.QueryEvents(ctx, filter)
-	if err != nil {
-		return false
-	}
-	for range eventChan {
-		return true
-	}
-	wdb.Publish(ctx, event)
-	return true
 }

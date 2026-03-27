@@ -28,6 +28,19 @@ var seedRelays = []string{
 	"wss://bitcoiner.social",
 }
 
+func saveEvent(ctx context.Context, event nostr.Event) bool {
+	filter := nostr.Filter{IDs: []string{event.ID}}
+	eventChan, err := wdb.QueryEvents(ctx, filter)
+	if err != nil {
+		return false
+	}
+	for range eventChan {
+		return true
+	}
+	wdb.Publish(ctx, event)
+	return true
+}
+
 func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
 	timeout, cancel := context.WithTimeout(ctx, time.Duration(config.RefreshInterval)*time.Hour)
 	defer cancel()
@@ -137,7 +150,7 @@ func fetchConversation(event nostr.Event) {
 		}
 
 		for ev := range pool.SubMany(timeout, relaysToQuery, filters) {
-			if belongsToWotNetwork(*ev.Event) {
+			if belongsToWotNetwork(*ev.Event) || isWhitelistedForThread(ev.Event.PubKey, rootEventID) {
 				saveEvent(ctx, *ev.Event)
 				go fetchQuotedEvents(*ev.Event)
 				go processBlossomBackup(*ev.Event)
