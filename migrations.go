@@ -14,9 +14,10 @@ type migration struct {
 	run    func() error
 }
 
-var migrations = []migration{
-	// Migrations are registered here in order, e.g.:
-	// {1, "classify-root-notes", migration0001ClassifyRootNotes},
+var migrations []migration
+
+func registerMigration(number int, name string, run func() error) {
+	migrations = append(migrations, migration{number, name, run})
 }
 
 const migrationsFile = "db/migrations.txt"
