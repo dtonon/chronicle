@@ -23,7 +23,6 @@ Blossom upload is restricted to the relay owner.
 It works nicely as inbox/outbox/dm relay.  
 It is a space-efficient backup relay.  
 It offers spam protection by WoT.  
-It permits to load old notes with a "fetch sync" option.
 It includes a Blossom media server.
 It backup other authors media.
 
@@ -52,9 +51,6 @@ REFRESH_INTERVAL=24
 
 # How many followers before they're allowed in the WoT
 MIN_FOLLOWERS=3
-
-# Periodically try fetch notes from other relays
-FETCH_SYNC="FALSE"
 
 # Whitelist events and/or DMs by PoW
 # A positivie value enable the whitelist

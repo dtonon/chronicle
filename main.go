@@ -42,7 +42,6 @@ type Config struct {
 	RelayPort          string
 	RefreshInterval    int
 	MinFollowers       int
-	FetchSync          bool
 	RelayContact       string
 	RelayIcon          string
 	PowWhitelist       int
@@ -62,8 +61,6 @@ var trustNetwork []string
 var oneHopNetwork []string
 var trustNetworkMap map[string]bool
 var pubkeyFollowerCount = make(map[string]int)
-var trustedNotes uint64
-var untrustedNotes uint64
 
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
@@ -223,9 +220,6 @@ func main() {
 		refreshTrustNetwork(ctx, relay)
 		wg.Done()
 		for {
-			if config.FetchSync {
-				archiveTrustedNotes(ctx, relay)
-			}
 			<-ticker.C // Wait for the ticker to tick
 			refreshProfiles(ctx, relay)
 			refreshTrustNetwork(ctx, relay)
@@ -276,10 +270,6 @@ func LoadConfig() Config {
 		os.Setenv("MIN_FOLLOWERS", "1")
 	}
 
-	if os.Getenv("FETCH_SYNC") == "" {
-		os.Setenv("FETCH_SYNC", "TRUE")
-	}
-
 	if os.Getenv("POW_WHITELIST") == "" {
 		os.Setenv("POW_WHITELIST", "999")
 	}
@@ -311,7 +301,6 @@ func LoadConfig() Config {
 		RelayPort:          getEnv("RELAY_PORT"),
 		RefreshInterval:    refreshInterval,
 		MinFollowers:       minFollowers,
-		FetchSync:          getEnv("FETCH_SYNC") == "TRUE",
 		PowWhitelist:       PowWhitelist,
 		PowDMWhitelist:     PowDMWhitelist,
 		BlossomAssetsPath:  getEnv("BLOSSOM_ASSETS_PATH"),

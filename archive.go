@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/fiatjaf/khatru"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip10"
 )
@@ -41,63 +40,6 @@ func saveEvent(ctx context.Context, event nostr.Event) bool {
 	return true
 }
 
-func archiveTrustedNotes(ctx context.Context, relay *khatru.Relay) {
-	timeout, cancel := context.WithTimeout(ctx, time.Duration(config.RefreshInterval)*time.Hour)
-	defer cancel()
-
-	go func() {
-		filters := []nostr.Filter{
-			{
-				Kinds: []int{
-					nostr.KindArticle,
-					nostr.KindDeletion,
-					nostr.KindEncryptedDirectMessage,
-					nostr.KindReaction,
-					nostr.KindRepost,
-					nostr.KindZapRequest,
-					nostr.KindZap,
-					nostr.KindTextNote,
-				},
-				Authors: []string{config.OwnerPubkey},
-			},
-			{
-				Kinds: []int{
-					nostr.KindArticle,
-					nostr.KindTextNote,
-					nostr.KindDeletion,
-					nostr.KindEncryptedDirectMessage,
-					nostr.KindReaction,
-					nostr.KindRepost,
-					nostr.KindZapRequest,
-					nostr.KindZap,
-					nostr.KindGiftWrap,
-				},
-				Tags: nostr.TagMap{"p": []string{config.OwnerPubkey}},
-			},
-		}
-
-		log.Println("📦 Archiving trusted notes...")
-
-		for ev := range pool.SubMany(timeout, seedRelays, filters) {
-			archiveEvent(ctx, relay, *ev.Event)
-		}
-	}()
-
-	<-timeout.Done()
-	log.Println("📦 Archived", trustedNotes, "trusted notes, discarded", untrustedNotes, "notes")
-}
-
-func archiveEvent(ctx context.Context, relay *khatru.Relay, event nostr.Event) {
-	if acceptedEvent(event) {
-		addEventToRootList(event)
-		fetchQuotedEvents(event)
-		saveEvent(ctx, event)
-		relay.BroadcastEvent(&event)
-		trustedNotes++
-	} else {
-		untrustedNotes++
-	}
-}
 
 // getNIP65Relays fetches and parses the NIP-65 relay list (kind 10002) for a given pubkey
 // Returns separate slices for read and write relays
