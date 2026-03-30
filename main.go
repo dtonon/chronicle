@@ -113,6 +113,10 @@ func main() {
 		log.Println("🗣️  Monitoring", rootNotesList.Size(), "threads")
 	}
 
+	if err := runMigrations(); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+
 	if config.BackupBlossomMedia {
 		initOwnerBlossomTracking()
 		log.Printf("📁 Blossom media backup enabled (max %d MB per file)", config.MaxFileSizeMB)
