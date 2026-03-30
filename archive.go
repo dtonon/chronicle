@@ -121,6 +121,12 @@ func fetchConversation(event nostr.Event) {
 		}
 	}
 
+	// Build whitelist from owner's p tags — avoids per-event DB queries in the fetch loop
+	whitelisted := make(map[string]bool)
+	for _, tag := range event.Tags.GetAll([]string{"p"}) {
+		whitelisted[tag[1]] = true
+	}
+
 	readRelays, writeRelays := getNIP65Relays(opPubkey)
 	relaysToQuery := append(readRelays, writeRelays...)
 	if len(relaysToQuery) == 0 {
@@ -150,7 +156,7 @@ func fetchConversation(event nostr.Event) {
 		}
 
 		for ev := range pool.SubMany(timeout, relaysToQuery, filters) {
-			if belongsToWotNetwork(*ev.Event) || isWhitelistedForThread(ev.Event.PubKey, rootEventID) {
+			if belongsToWotNetwork(*ev.Event) || whitelisted[ev.Event.PubKey] {
 				saveEvent(ctx, *ev.Event)
 				go fetchQuotedEvents(*ev.Event)
 				go processBlossomBackup(*ev.Event)
