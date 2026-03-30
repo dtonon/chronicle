@@ -21,7 +21,6 @@ import (
 	"github.com/fiatjaf/khatru/policies"
 	"github.com/joho/godotenv"
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip10"
 )
 
 //go:embed template/index.html
@@ -306,21 +305,4 @@ func getEnv(key string) string {
 		log.Fatalf("Environment variable %s not set", key)
 	}
 	return value
-}
-
-func addEventToRootList(event nostr.Event) {
-	// Add only notes and articles to the root list
-	if event.Kind != nostr.KindTextNote &&
-		event.Kind != nostr.KindArticle {
-		return
-	}
-
-	rootReference := nip10.GetThreadRoot(event.Tags)
-	var rootReferenceValue string
-	if rootReference == nil { // Is a root post
-		rootReferenceValue = event.ID
-	} else { // Is a reply
-		rootReferenceValue = rootReference.Value()
-	}
-	rootNotesList.Add(rootReferenceValue, "")
 }

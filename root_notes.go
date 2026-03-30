@@ -2,8 +2,12 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"strings"
+
+	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip10"
 )
 
 const (
@@ -66,6 +70,55 @@ func (r *RootNotes) SaveToFile() error {
 		}
 	}
 	return writer.Flush()
+}
+
+func addEventToRootList(event nostr.Event) {
+	if event.Kind != nostr.KindTextNote &&
+		event.Kind != nostr.KindArticle {
+		return
+	}
+
+	rootReference := nip10.GetThreadRoot(event.Tags)
+
+	if rootReference == nil {
+		// Event is a root post — always internal
+		rootNotesList.Add(event.ID, "")
+		return
+	}
+
+	rootID := rootReference.Value()
+
+	if event.PubKey != config.OwnerPubkey {
+		// Non-owner event: track only if not already known, don't change existing state
+		if !rootNotesList.Include(rootID) {
+			rootNotesList.Add(rootID, "")
+		}
+		return
+	}
+
+	// Owner replied to a thread — determine internal vs external
+	existing := rootNotesList.State(rootID)
+	if existing == ThreadOld || existing == ThreadArchived {
+		// Reactivate: owner interacted again
+		rootNotesList.Add(rootID, ThreadExternal)
+		return
+	}
+	if existing == ThreadExternal || existing == "" && rootNotesList.Include(rootID) {
+		// Already correctly tracked, no change
+		return
+	}
+
+	// Not yet tracked — check root author to determine state
+	ctx := context.Background()
+	filter := nostr.Filter{IDs: []string{rootID}}
+	eventChan, _ := wdb.QueryEvents(ctx, filter)
+	state := ThreadExternal
+	for rootEvent := range eventChan {
+		if rootEvent.PubKey == config.OwnerPubkey {
+			state = ""
+		}
+	}
+	rootNotesList.Add(rootID, state)
 }
 
 // LoadFromFile loads root notes from the file into memory
