@@ -322,5 +322,5 @@ func addEventToRootList(event nostr.Event) {
 	} else { // Is a reply
 		rootReferenceValue = rootReference.Value()
 	}
-	rootNotesList.Add(rootReferenceValue)
+	rootNotesList.Add(rootReferenceValue, "")
 }
