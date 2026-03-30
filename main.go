@@ -235,6 +235,26 @@ func main() {
 	// Wait for the first execution to complete
 	wg.Wait()
 
+	// Periodic fetch for external threads
+	go func() {
+		tickerEX := time.NewTicker(24 * time.Hour)
+		tickerOL := time.NewTicker(7 * 24 * time.Hour)
+		tickerAR := time.NewTicker(30 * 24 * time.Hour)
+		defer tickerEX.Stop()
+		defer tickerOL.Stop()
+		defer tickerAR.Stop()
+		for {
+			select {
+			case <-tickerEX.C:
+				fetchExternalThreadUpdates(ThreadExternal, 24*time.Hour)
+			case <-tickerOL.C:
+				fetchExternalThreadUpdates(ThreadOld, 7*24*time.Hour)
+			case <-tickerAR.C:
+				fetchExternalThreadUpdates(ThreadArchived, 30*24*time.Hour)
+			}
+		}
+	}()
+
 	log.Println("🎉 Relay running on port", config.RelayPort)
 	err := http.ListenAndServe(":"+config.RelayPort, relay)
 	if err != nil {
