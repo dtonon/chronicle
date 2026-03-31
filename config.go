@@ -23,8 +23,9 @@ type Config struct {
 	PowDMWhitelist     int
 	BlossomAssetsPath  string
 	BlossomPublicURL   string
-	BackupBlossomMedia bool
-	MaxFileSizeMB      int
+	BackupBlossomMedia  bool
+	MaxFileSizeMB       int
+	FetchAllInteractions bool
 }
 
 func LoadConfig() Config {
@@ -52,6 +53,10 @@ func LoadConfig() Config {
 		os.Setenv("BLOSSOM_BACKUP_MEDIA", "FALSE")
 	}
 
+	if os.Getenv("FETCH_ALL_INTERACTIONS") == "" {
+		os.Setenv("FETCH_ALL_INTERACTIONS", "FALSE")
+	}
+
 	if os.Getenv("BLOSSOM_MAX_FILE_MB") == "" {
 		os.Setenv("BLOSSOM_MAX_FILE_MB", "10")
 	}
@@ -76,8 +81,9 @@ func LoadConfig() Config {
 		PowDMWhitelist:     PowDMWhitelist,
 		BlossomAssetsPath:  getEnv("BLOSSOM_ASSETS_PATH"),
 		BlossomPublicURL:   getEnv("BLOSSOM_PUBLIC_URL"),
-		BackupBlossomMedia: getEnv("BLOSSOM_BACKUP_MEDIA") == "TRUE",
-		MaxFileSizeMB:      maxFileSizeMB,
+		BackupBlossomMedia:  getEnv("BLOSSOM_BACKUP_MEDIA") == "TRUE",
+		MaxFileSizeMB:       maxFileSizeMB,
+		FetchAllInteractions: getEnv("FETCH_ALL_INTERACTIONS") == "TRUE",
 	}
 
 	return config

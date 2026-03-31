@@ -66,6 +66,9 @@ BLOSSOM_ASSETS_PATH="assets/"
 
 # Enable automatic backup of media for other authors
 BLOSSOM_BACKUP_MEDIA="TRUE"
+
+# Accept reactions and zaps for all notes in archived threads, not just owner notes
+FETCH_ALL_INTERACTIONS="FALSE"
 ```
 
 ## Build
