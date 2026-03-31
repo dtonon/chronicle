@@ -9,16 +9,17 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"text/template"
 	"time"
 
-	"github.com/fiatjaf/eventstore"
-	"github.com/fiatjaf/khatru"
-	"github.com/fiatjaf/khatru/blossom"
-	"github.com/fiatjaf/khatru/policies"
-	"github.com/nbd-wtf/go-nostr"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/eventstore"
+	"fiatjaf.com/nostr/khatru"
+	"fiatjaf.com/nostr/khatru/blossom"
+	"fiatjaf.com/nostr/khatru/policies"
 )
 
 //go:embed template/index.html
@@ -31,9 +32,8 @@ var (
 	version string
 )
 
-
-var pool *nostr.SimplePool
-var wdb nostr.RelayStore
+var pool *nostr.Pool
+var store eventstore.Store
 var rootNotesList *RootNotes
 var relays []string
 var config Config
@@ -41,6 +41,16 @@ var trustNetwork []string
 var oneHopNetwork []string
 var trustNetworkMap map[string]bool
 var pubkeyFollowerCount = make(map[string]int)
+
+func pubKeysFromHexes(hexes []string) []nostr.PubKey {
+	pks := make([]nostr.PubKey, 0, len(hexes))
+	for _, h := range hexes {
+		if pk, err := nostr.PubKeyFromHex(h); err == nil {
+			pks = append(pks, pk)
+		}
+	}
+	return pks
+}
 
 func main() {
 	nostr.InfoLogger = log.New(io.Discard, "", 0)
@@ -62,12 +72,13 @@ func main() {
 	log.Println("🚀 Booting up Chronicle relay")
 	relay := khatru.NewRelay()
 	ctx := context.Background()
-	pool = nostr.NewSimplePool(ctx)
+	pool = nostr.NewPool(nostr.PoolOptions{})
 	config = LoadConfig()
 	os.MkdirAll(config.BlossomAssetsPath, 0755)
 
 	relay.Info.Name = config.RelayName
-	relay.Info.PubKey = config.OwnerPubkey
+	ownerPubkey := nostr.MustPubKeyFromHex(config.OwnerPubkey)
+	relay.Info.PubKey = &ownerPubkey
 	relay.Info.Icon = config.RelayIcon
 	relay.Info.Contact = config.RelayContact
 	relay.Info.Description = config.RelayDescription
@@ -80,9 +91,11 @@ func main() {
 	if err := db.Init(); err != nil {
 		panic(err)
 	}
-	wdb = eventstore.RelayWrapper{Store: &db}
+	store = &db
 
-	rootNotesList = NewRootNotes("db/root_notes")
+	relay.UseEventstore(store, 500)
+
+	rootNotesList = NewRootNotes(config.DBPath + "root_notes")
 	if err := rootNotesList.LoadFromFile(); err != nil {
 		fmt.Println("Error loading strings:", err)
 		return
@@ -99,33 +112,27 @@ func main() {
 		log.Printf("📁 Blossom media backup enabled (max %d MB per file)", config.MaxFileSizeMB)
 	}
 
-	relay.RejectEvent = append(relay.RejectEvent,
+	relay.OnEvent = policies.SeqEvent(
 		policies.RejectEventsWithBase64Media,
 		policies.EventIPRateLimiter(5, time.Minute*1, 30),
+		func(ctx context.Context, event nostr.Event) (bool, string) {
+			if acceptedEvent(event) {
+				addEventToRootList(event)
+				go fetchQuotedEvents(event)
+				go fetchConversation(event)
+				go processBlossomBackup(event)
+				return false, ""
+			}
+			return true, "event not allowed"
+		},
 	)
 
-	relay.RejectFilter = append(relay.RejectFilter,
+	relay.OnRequest = policies.SeqRequest(
 		policies.NoEmptyFilters,
 		policies.NoComplexFilters,
 	)
 
-	relay.RejectConnection = append(relay.RejectConnection,
-		policies.ConnectionRateLimiter(10, time.Minute*2, 30),
-	)
-
-	relay.StoreEvent = append(relay.StoreEvent, db.SaveEvent)
-	relay.QueryEvents = append(relay.QueryEvents, db.QueryEvents)
-	relay.DeleteEvent = append(relay.DeleteEvent, db.DeleteEvent)
-	relay.RejectEvent = append(relay.RejectEvent, func(ctx context.Context, event *nostr.Event) (bool, string) {
-		if acceptedEvent(*event) {
-			addEventToRootList(*event)
-			go fetchQuotedEvents(*event)
-			go fetchConversation(*event)
-			go processBlossomBackup(*event)
-			return false, ""
-		}
-		return true, "event not allowed"
-	})
+	relay.RejectConnection = policies.ConnectionRateLimiter(10, time.Minute*2, 30)
 
 	mux := relay.Router()
 
@@ -160,7 +167,7 @@ func main() {
 	// Blossom config
 	bl := blossom.New(relay, config.BlossomPublicURL)
 	bl.Store = blossom.EventStoreBlobIndexWrapper{Store: &db, ServiceURL: bl.ServiceURL}
-	bl.StoreBlob = append(bl.StoreBlob, func(ctx context.Context, sha256 string, body []byte) error {
+	bl.StoreBlob = func(ctx context.Context, sha256 string, ext string, body []byte) error {
 		file, err := os.Create(config.BlossomAssetsPath + sha256)
 		if err != nil {
 			return err
@@ -168,30 +175,28 @@ func main() {
 		if _, err := io.Copy(file, bytes.NewReader(body)); err != nil {
 			return err
 		}
-
-		// Track owner's uploaded files
 		if config.BackupBlossomMedia {
 			trackOwnerBlossomFile(sha256)
 		}
-
 		return nil
-	})
-	bl.LoadBlob = append(bl.LoadBlob, func(ctx context.Context, sha256 string) (io.ReadSeeker, error) {
-		return os.Open(config.BlossomAssetsPath + sha256)
-	})
-	bl.DeleteBlob = append(bl.DeleteBlob, func(ctx context.Context, sha256 string) error {
+	}
+	bl.LoadBlob = func(ctx context.Context, sha256 string, ext string) (io.ReadSeeker, *url.URL, error) {
+		reader, err := os.Open(config.BlossomAssetsPath + sha256)
+		return reader, nil, err
+	}
+	bl.DeleteBlob = func(ctx context.Context, sha256 string, ext string) error {
 		return os.Remove(config.BlossomAssetsPath + sha256)
-	})
-	bl.RejectUpload = append(bl.RejectUpload, func(ctx context.Context, event *nostr.Event, size int, ext string) (bool, string, int) {
-		if event.PubKey == config.OwnerPubkey {
+	}
+	bl.RejectUpload = func(ctx context.Context, auth *nostr.Event, size int, ext string) (bool, string, int) {
+		if auth != nil && auth.PubKey == ownerPubkey {
 			return false, ext, size
 		}
 		return true, "Not allowed", 403
-	})
+	}
 
 	// WoT and archiving procedures
 	var wg sync.WaitGroup
-	wg.Add(1) // We expect one goroutine to finish
+	wg.Add(1)
 	interval := time.Duration(config.RefreshInterval) * time.Hour
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -200,16 +205,14 @@ func main() {
 		refreshTrustNetwork(ctx, relay)
 		wg.Done()
 		for {
-			<-ticker.C // Wait for the ticker to tick
+			<-ticker.C
 			refreshProfiles(ctx, relay)
 			refreshTrustNetwork(ctx, relay)
 		}
 	}()
 
-	// Wait for the first execution to complete
 	wg.Wait()
 
-	// Periodic fetch for external threads
 	go func() {
 		tickerEX := time.NewTicker(24 * time.Hour)
 		tickerOL := time.NewTicker(7 * 24 * time.Hour)
@@ -235,4 +238,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-

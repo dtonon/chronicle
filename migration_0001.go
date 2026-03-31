@@ -1,52 +1,46 @@
 package main
 
 import (
-	"context"
 	"log"
 	"time"
 
-	"github.com/nbd-wtf/go-nostr"
+	"fiatjaf.com/nostr"
 )
 
 func init() {
 	registerMigration(1, "0001ClassifyRootNotes", migration0001ClassifyRootNotes)
 }
 
-// migration0001ClassifyRootNotes classifies existing root notes as internal or
-// external, assigning EX/OL/AR state based on root author and last activity
 func migration0001ClassifyRootNotes() error {
-	ctx := context.Background()
 	now := nostr.Now()
 	thirtyDays := nostr.Timestamp(30 * 24 * time.Hour / time.Second)
 	sixMonths := nostr.Timestamp(180 * 24 * time.Hour / time.Second)
 
 	for id, state := range rootNotesList.notes {
 		if state != "" {
-			// Already classified by new code, skip
 			continue
 		}
 
-		// Determine if root event is owned by the relay owner
-		rootFilter := nostr.Filter{IDs: []string{id}}
-		rootChan, _ := wdb.QueryEvents(ctx, rootFilter)
+		refID, err := nostr.IDFromHex(id)
+		if err != nil {
+			continue
+		}
+
 		isInternal := false
-		for rootEvent := range rootChan {
-			if rootEvent.PubKey == config.OwnerPubkey {
+		for rootEvent := range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{refID}}, 1) {
+			if rootEvent.PubKey.Hex() == config.OwnerPubkey {
 				isInternal = true
 			}
 		}
 		if isInternal {
-			continue // Keep state as ""
+			continue
 		}
 
-		// External thread — determine state from last activity
-		activityFilter := nostr.Filter{
+		lastActivity := nostr.Timestamp(0)
+		for ev := range store.QueryEvents(nostr.Filter{
 			Tags:  nostr.TagMap{"e": []string{id}},
 			Limit: 1,
-		}
-		activityChan, _ := wdb.QueryEvents(ctx, activityFilter)
-		lastActivity := nostr.Timestamp(0)
-		for ev := range activityChan {
+		}, 1) {
 			if ev.CreatedAt > lastActivity {
 				lastActivity = ev.CreatedAt
 			}

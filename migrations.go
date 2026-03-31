@@ -20,7 +20,7 @@ func registerMigration(number int, name string, run func() error) {
 	migrations = append(migrations, migration{number, name, run})
 }
 
-const migrationsFile = "db/migrations.txt"
+var migrationsFile = config.DBPath + "migrations.txt"
 
 func runMigrations() error {
 	last, err := lastMigration()

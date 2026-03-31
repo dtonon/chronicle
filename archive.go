@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip10"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip10"
 )
 
 var seedRelays = []string{
@@ -27,22 +27,15 @@ var seedRelays = []string{
 	"wss://bitcoiner.social",
 }
 
-func saveEvent(ctx context.Context, event nostr.Event) bool {
-	filter := nostr.Filter{IDs: []string{event.ID}}
-	eventChan, err := wdb.QueryEvents(ctx, filter)
-	if err != nil {
-		return false
-	}
-	for range eventChan {
+func saveEvent(event nostr.Event) bool {
+	for range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{event.ID}}, 1) {
 		return true
 	}
-	wdb.Publish(ctx, event)
+	store.SaveEvent(event)
 	return true
 }
 
-
 // getNIP65Relays fetches and parses the NIP-65 relay list (kind 10002) for a given pubkey
-// Returns separate slices for read and write relays
 func getNIP65Relays(pubkey string) (read []string, write []string) {
 	if pubkey == "" {
 		return nil, nil
@@ -52,13 +45,19 @@ func getNIP65Relays(pubkey string) (read []string, write []string) {
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	pk, err := nostr.PubKeyFromHex(pubkey)
+	if err != nil {
+		return nil, nil
+	}
+
 	var bestEvent *nostr.Event
-	for ev := range pool.SubManyEose(timeout, seedRelays, []nostr.Filter{{
-		Authors: []string{pubkey},
-		Kinds:   []int{nostr.KindRelayListMetadata},
-	}}) {
-		if bestEvent == nil || ev.Event.CreatedAt > bestEvent.CreatedAt {
-			bestEvent = ev.Event
+	for ev := range pool.FetchMany(timeout, seedRelays, nostr.Filter{
+		Authors: []nostr.PubKey{pk},
+		Kinds:   []nostr.Kind{nostr.KindRelayListMetadata},
+	}, nostr.SubscriptionOptions{}) {
+		e := ev.Event
+		if bestEvent == nil || e.CreatedAt > bestEvent.CreatedAt {
+			bestEvent = &e
 		}
 	}
 
@@ -66,12 +65,11 @@ func getNIP65Relays(pubkey string) (read []string, write []string) {
 		return nil, nil
 	}
 
-	for _, tag := range bestEvent.Tags.GetAll([]string{"r"}) {
+	for tag := range bestEvent.Tags.FindAll("r") {
 		if len(tag) < 2 {
 			continue
 		}
 		if len(tag) == 2 {
-			// No marker means both read and write
 			read = append(read, tag[1])
 			write = append(write, tag[1])
 		} else if tag[2] == "read" {
@@ -83,8 +81,7 @@ func getNIP65Relays(pubkey string) (read []string, write []string) {
 	return read, write
 }
 
-// fetchThread is the shared core for fetching thread events. It resolves the
-// OP's NIP-65 relays, then fetches and saves all events that pass WoT or the whitelist
+// fetchThread fetches thread events passing WoT or whitelist and saves them
 func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, relayHint string, since *nostr.Timestamp) {
 	readRelays, writeRelays := getNIP65Relays(opPubkey)
 	relaysToQuery := append(readRelays, writeRelays...)
@@ -100,7 +97,7 @@ func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, rela
 	defer cancel()
 
 	filter := nostr.Filter{
-		Kinds: []int{
+		Kinds: []nostr.Kind{
 			nostr.KindArticle,
 			nostr.KindDeletion,
 			nostr.KindReaction,
@@ -108,22 +105,22 @@ func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, rela
 			nostr.KindZap,
 			nostr.KindTextNote,
 		},
-		Tags:  nostr.TagMap{"e": []string{rootEventID}},
-		Since: since,
+		Tags: nostr.TagMap{"e": []string{rootEventID}},
+	}
+	if since != nil {
+		filter.Since = *since
 	}
 
-	for ev := range pool.SubManyEose(timeout, relaysToQuery, []nostr.Filter{filter}) {
-		if belongsToWotNetwork(*ev.Event) || whitelisted[ev.Event.PubKey] {
-			saveEvent(ctx, *ev.Event)
-			go fetchQuotedEvents(*ev.Event)
-			go processBlossomBackup(*ev.Event)
+	for ev := range pool.FetchMany(timeout, relaysToQuery, filter, nostr.SubscriptionOptions{}) {
+		if belongsToWotNetwork(ev.Event) || whitelisted[ev.PubKey.Hex()] {
+			saveEvent(ev.Event)
+			go fetchQuotedEvents(ev.Event)
+			go processBlossomBackup(ev.Event)
 		}
 	}
 }
 
-// fetchConversation fetches the full thread for an accepted event, querying
-// the OP's NIP-65 read and write relays. Non-WoT authors are accepted if they
-// are tagged in the owner's triggering event (implicit whitelist via p tags)
+// fetchConversation fetches the full thread for an accepted event
 func fetchConversation(event nostr.Event) {
 	rootReference := nip10.GetThreadRoot(event.Tags)
 
@@ -131,35 +128,32 @@ func fetchConversation(event nostr.Event) {
 	var opPubkey string
 
 	if rootReference == nil {
-		rootEventID = event.ID
-		opPubkey = event.PubKey
+		rootEventID = event.ID.Hex()
+		opPubkey = event.PubKey.Hex()
 	} else {
-		rootEventID = rootReference.Value()
-		lookupCtx := context.Background()
-		eventChan, _ := wdb.QueryEvents(lookupCtx, nostr.Filter{IDs: []string{rootEventID}})
-		for rootEvent := range eventChan {
-			opPubkey = rootEvent.PubKey
+		rootEventID = rootReference.AsTagReference()
+		for rootEvent := range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{nostr.MustIDFromHex(rootEventID)}}, 1) {
+			opPubkey = rootEvent.PubKey.Hex()
 		}
 	}
 
-	// Build whitelist from owner's p tags — avoids per-event DB queries in the fetch loop
 	whitelisted := make(map[string]bool)
-	for _, tag := range event.Tags.GetAll([]string{"p"}) {
+	for tag := range event.Tags.FindAll("p") {
 		whitelisted[tag[1]] = true
 	}
 
 	relayHint := ""
 	if rootReference != nil {
-		relayHint = rootReference.Relay()
+		if ep, ok := rootReference.(nostr.EventPointer); ok && len(ep.Relays) > 0 {
+			relayHint = ep.Relays[0]
+		}
 	}
 
 	fetchThread(rootEventID, opPubkey, whitelisted, relayHint, nil)
 }
 
-// fetchExternalThreadUpdates fetches new events for all external threads in the
-// given state, using a since window matching the fetch frequency for that state
+// fetchExternalThreadUpdates fetches new events for all external threads in the given state
 func fetchExternalThreadUpdates(state string, since time.Duration) {
-	ctx := context.Background()
 	sinceTs := nostr.Now() - nostr.Timestamp(since/time.Second)
 
 	for id, s := range rootNotesList.notes {
@@ -167,20 +161,17 @@ func fetchExternalThreadUpdates(state string, since time.Duration) {
 			continue
 		}
 
-		rootChan, _ := wdb.QueryEvents(ctx, nostr.Filter{IDs: []string{id}})
 		var opPubkey string
-		for rootEvent := range rootChan {
-			opPubkey = rootEvent.PubKey
+		for rootEvent := range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{nostr.MustIDFromHex(id)}}, 1) {
+			opPubkey = rootEvent.PubKey.Hex()
 		}
 
-		// Build whitelist from all p tags across owner's events in this thread
 		whitelisted := make(map[string]bool)
-		ownerChan, _ := wdb.QueryEvents(ctx, nostr.Filter{
-			Authors: []string{config.OwnerPubkey},
+		for ownerEvent := range store.QueryEvents(nostr.Filter{
+			Authors: []nostr.PubKey{nostr.MustPubKeyFromHex(config.OwnerPubkey)},
 			Tags:    nostr.TagMap{"e": []string{id}},
-		})
-		for ownerEvent := range ownerChan {
-			for _, tag := range ownerEvent.Tags.GetAll([]string{"p"}) {
+		}, 0) {
+			for tag := range ownerEvent.Tags.FindAll("p") {
 				whitelisted[tag[1]] = true
 			}
 		}
@@ -195,24 +186,21 @@ func fetchExternalThreadUpdates(state string, since time.Duration) {
 }
 
 // updateExternalThreadStates transitions external threads between EX/OL/AR
-// based on the age of their most recent stored event.
 func updateExternalThreadStates() {
-	ctx := context.Background()
 	now := nostr.Now()
 	thirtyDays := nostr.Timestamp(30 * 24 * time.Hour / time.Second)
 	sixMonths := nostr.Timestamp(180 * 24 * time.Hour / time.Second)
 
 	for id, state := range rootNotesList.notes {
 		if state == "" {
-			continue // Internal thread, skip
+			continue
 		}
 
-		activityChan, _ := wdb.QueryEvents(ctx, nostr.Filter{
+		lastActivity := nostr.Timestamp(0)
+		for ev := range store.QueryEvents(nostr.Filter{
 			Tags:  nostr.TagMap{"e": []string{id}},
 			Limit: 1,
-		})
-		lastActivity := nostr.Timestamp(0)
-		for ev := range activityChan {
+		}, 1) {
 			if ev.CreatedAt > lastActivity {
 				lastActivity = ev.CreatedAt
 			}
@@ -234,14 +222,16 @@ func updateExternalThreadStates() {
 func fetchQuotedEvents(event nostr.Event) {
 	var quoteIDs []string
 	var quoteRelays []string
-	for _, tag := range event.Tags.GetAll([]string{"q", ""}) {
-		quoteIDs = append(quoteIDs, tag[1])
-		if len(tag) >= 3 && tag[2] != "" {
-			quoteRelays = append(quoteRelays, tag[2])
+	for tag := range event.Tags.FindAll("q") {
+		if len(tag) >= 2 {
+			quoteIDs = append(quoteIDs, tag[1])
+			if len(tag) >= 3 && tag[2] != "" {
+				quoteRelays = append(quoteRelays, tag[2])
+			}
 		}
 	}
 
-	if len(quoteIDs) == 0 { // No quoted events found
+	if len(quoteIDs) == 0 {
 		return
 	}
 
@@ -249,25 +239,35 @@ func fetchQuotedEvents(event nostr.Event) {
 	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	relaysToQuery := append(quoteRelays, seedRelays...)
+
 	go func() {
-		filters := []nostr.Filter{
-			{
-				IDs: quoteIDs,
-			},
-			{
-				Kinds: []int{
-					nostr.KindDeletion,
-					nostr.KindReaction,
-					nostr.KindZapRequest,
-					nostr.KindZap,
-				},
-				Tags: nostr.TagMap{"e": quoteIDs},
-			},
+		for ev := range pool.FetchMany(timeout, relaysToQuery, nostr.Filter{
+			IDs: func() []nostr.ID {
+				ids := make([]nostr.ID, 0, len(quoteIDs))
+				for _, h := range quoteIDs {
+					if id, err := nostr.IDFromHex(h); err == nil {
+						ids = append(ids, id)
+					}
+				}
+				return ids
+			}(),
+		}, nostr.SubscriptionOptions{}) {
+			saveEvent(ev.Event)
+			go processBlossomBackup(ev.Event)
 		}
 
-		for ev := range pool.SubManyEose(timeout, append(quoteRelays, seedRelays...), filters) {
-			saveEvent(ctx, *ev.Event)
-			go processBlossomBackup(*ev.Event)
+		for ev := range pool.FetchMany(timeout, relaysToQuery, nostr.Filter{
+			Kinds: []nostr.Kind{
+				nostr.KindDeletion,
+				nostr.KindReaction,
+				nostr.KindZapRequest,
+				nostr.KindZap,
+			},
+			Tags: nostr.TagMap{"e": quoteIDs},
+		}, nostr.SubscriptionOptions{}) {
+			saveEvent(ev.Event)
+			go processBlossomBackup(ev.Event)
 		}
 	}()
 

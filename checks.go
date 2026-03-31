@@ -1,23 +1,18 @@
 package main
 
 import (
-	"context"
-	"time"
-
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip10"
-	"github.com/nbd-wtf/go-nostr/nip13"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip10"
+	"fiatjaf.com/nostr/nip13"
 )
 
 // acceptedEvent returns true if the event should be stored in the relay
-// Owner events are always accepted. Other events must belong to a valid tracked
-// thread and pass WoT, PoW, or the implicit per-thread whitelist check
 func acceptedEvent(event nostr.Event) bool {
-	if event.PubKey == config.OwnerPubkey {
+	if event.PubKey.Hex() == config.OwnerPubkey {
 		return true
 
 	} else if event.Kind == nostr.KindGiftWrap {
-		for _, tag := range event.Tags.GetAll([]string{"p"}) {
+		for tag := range event.Tags.FindAll("p") {
 			if tag[1] == config.OwnerPubkey {
 				return (belongsToWotNetwork(event) || nip13.Difficulty(event.ID) >= config.PowDMWhitelist)
 			}
@@ -29,7 +24,7 @@ func acceptedEvent(event nostr.Event) bool {
 			return true
 		}
 		rootRef := nip10.GetThreadRoot(event.Tags)
-		if rootRef != nil && isWhitelistedForThread(event.PubKey, rootRef.Value()) {
+		if rootRef != nil && isWhitelistedForThread(event.PubKey.Hex(), rootRef.AsTagReference()) {
 			return true
 		}
 
@@ -38,38 +33,29 @@ func acceptedEvent(event nostr.Event) bool {
 	return false
 }
 
-// belongsToValidThread returns true if the event is part of a thread the owner
-// participated in. For text notes and articles it checks the root notes list;
-// for reactions, zaps and deletions it checks that the referenced event exists locally
+// belongsToValidThread returns true if the event is part of a tracked thread
 func belongsToValidThread(event nostr.Event) bool {
 	eReference := nip10.GetThreadRoot(event.Tags)
 	if eReference == nil {
-		// We already accept root notes by owner
 		return false
 	}
 
 	if event.Kind == nostr.KindTextNote ||
 		event.Kind == nostr.KindArticle {
 
-		rootCheck := rootNotesList.Include(eReference.Value())
-		return rootCheck
+		return rootNotesList.Include(eReference.AsTagReference())
 	}
 
-	// The event refers to a note in the thread
 	if event.Kind == nostr.KindDeletion ||
 		event.Kind == nostr.KindReaction ||
 		event.Kind == nostr.KindZapRequest ||
 		event.Kind == nostr.KindZap {
 
-		ctx := context.Background()
-		_, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
-		filter := nostr.Filter{
-			IDs: []string{eReference.Value()},
+		refID, err := nostr.IDFromHex(eReference.AsTagReference())
+		if err != nil {
+			return false
 		}
-		eventChan, _ := wdb.QueryEvents(ctx, filter)
-		for range eventChan {
+		for range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{refID}}, 1) {
 			return true
 		}
 	}
@@ -77,23 +63,21 @@ func belongsToValidThread(event nostr.Event) bool {
 	return false
 }
 
-// isWhitelistedForThread checks if pubkey is whitelisted for a thread by verifying
-// that the owner has an event in that thread that tags the pubkey
+// isWhitelistedForThread checks if pubkey is whitelisted for a thread
 func isWhitelistedForThread(pubkey string, rootEventID string) bool {
-	ctx := context.Background()
+	ownerPK, err := nostr.PubKeyFromHex(config.OwnerPubkey)
+	if err != nil {
+		return false
+	}
 	filter := nostr.Filter{
-		Authors: []string{config.OwnerPubkey},
+		Authors: []nostr.PubKey{ownerPK},
 		Tags: nostr.TagMap{
 			"e": []string{rootEventID},
 			"p": []string{pubkey},
 		},
 		Limit: 1,
 	}
-	eventChan, err := wdb.QueryEvents(ctx, filter)
-	if err != nil {
-		return false
-	}
-	for range eventChan {
+	for range store.QueryEvents(filter, 1) {
 		return true
 	}
 	return false
