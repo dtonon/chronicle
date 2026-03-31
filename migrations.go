@@ -20,7 +20,9 @@ func registerMigration(number int, name string, run func() error) {
 	migrations = append(migrations, migration{number, name, run})
 }
 
-var migrationsFile = config.DBPath + "migrations.txt"
+func migrationsFile() string {
+	return config.DBPath + "migrations.txt"
+}
 
 func runMigrations() error {
 	last, err := lastMigration()
@@ -45,7 +47,7 @@ func runMigrations() error {
 }
 
 func lastMigration() (int, error) {
-	data, err := os.ReadFile(migrationsFile)
+	data, err := os.ReadFile(migrationsFile())
 	if os.IsNotExist(err) {
 		return 0, nil
 	}
@@ -60,5 +62,5 @@ func lastMigration() (int, error) {
 }
 
 func setLastMigration(n int) error {
-	return os.WriteFile(migrationsFile, []byte(strconv.Itoa(n)+"\n"), 0644)
+	return os.WriteFile(migrationsFile(), []byte(strconv.Itoa(n)+"\n"), 0644)
 }
