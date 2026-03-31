@@ -26,6 +26,7 @@ type Config struct {
 	BackupBlossomMedia  bool
 	MaxFileSizeMB       int
 	FetchAllInteractions bool
+	SkipDeletions        bool
 }
 
 func LoadConfig() Config {
@@ -57,6 +58,10 @@ func LoadConfig() Config {
 		os.Setenv("FETCH_ALL_INTERACTIONS", "FALSE")
 	}
 
+	if os.Getenv("SKIP_DELETIONS") == "" {
+		os.Setenv("SKIP_DELETIONS", "FALSE")
+	}
+
 	if os.Getenv("BLOSSOM_MAX_FILE_MB") == "" {
 		os.Setenv("BLOSSOM_MAX_FILE_MB", "10")
 	}
@@ -84,6 +89,7 @@ func LoadConfig() Config {
 		BackupBlossomMedia:  getEnv("BLOSSOM_BACKUP_MEDIA") == "TRUE",
 		MaxFileSizeMB:       maxFileSizeMB,
 		FetchAllInteractions: getEnv("FETCH_ALL_INTERACTIONS") == "TRUE",
+		SkipDeletions:        getEnv("SKIP_DELETIONS") == "TRUE",
 	}
 
 	return config

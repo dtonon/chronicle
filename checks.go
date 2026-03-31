@@ -45,7 +45,7 @@ func belongsToValidThread(event nostr.Event) bool {
 		return rootNotesList.Include(eReference.AsTagReference())
 	}
 
-	if event.Kind == nostr.KindDeletion {
+	if event.Kind == nostr.KindDeletion && !config.SkipDeletions {
 		eReference := nip10.GetThreadRoot(event.Tags)
 		if eReference == nil {
 			return false

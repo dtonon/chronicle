@@ -69,6 +69,9 @@ BLOSSOM_BACKUP_MEDIA="TRUE"
 
 # Accept reactions and zaps for all notes in archived threads, not just owner notes
 FETCH_ALL_INTERACTIONS="FALSE"
+
+# Ignore deletion requests from other users, keeping their notes permanently
+SKIP_DELETIONS="FALSE"
 ```
 
 ## Build
