@@ -67,7 +67,36 @@ func (r *RootNotes) SaveToFile() error {
 
 func addEventToRootList(event nostr.Event) {
 	if event.Kind != nostr.KindTextNote &&
-		event.Kind != nostr.KindArticle {
+		event.Kind != nostr.KindArticle &&
+		event.Kind != nostr.KindReaction &&
+		event.Kind != nostr.KindZapRequest {
+		return
+	}
+
+	if event.Kind == nostr.KindReaction || event.Kind == nostr.KindZapRequest {
+		if event.PubKey.Hex() != config.OwnerPubkey {
+			return
+		}
+		var targetID string
+		for tag := range event.Tags.FindAll("e") {
+			targetID = tag[1]
+		}
+		if targetID == "" {
+			return
+		}
+		rootID := targetID
+		refID, err := nostr.IDFromHex(targetID)
+		if err != nil {
+			return
+		}
+		for targetEvent := range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{refID}}, 1) {
+			if rootRef := nip10.GetThreadRoot(targetEvent.Tags); rootRef != nil {
+				rootID = rootRef.AsTagReference()
+			}
+		}
+		if !rootNotesList.Include(rootID) {
+			rootNotesList.Add(rootID, ThreadExternal)
+		}
 		return
 	}
 

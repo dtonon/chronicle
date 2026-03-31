@@ -122,6 +122,34 @@ func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, rela
 
 // fetchConversation fetches the full thread for an accepted event
 func fetchConversation(event nostr.Event) {
+	if event.Kind == nostr.KindReaction || event.Kind == nostr.KindZapRequest {
+		var targetID string
+		for tag := range event.Tags.FindAll("e") {
+			targetID = tag[1]
+		}
+		if targetID == "" {
+			return
+		}
+		whitelisted := make(map[string]bool)
+		for tag := range event.Tags.FindAll("p") {
+			whitelisted[tag[1]] = true
+		}
+		rootEventID := targetID
+		var opPubkey string
+		refID, err := nostr.IDFromHex(targetID)
+		if err != nil {
+			return
+		}
+		for targetEvent := range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{refID}}, 1) {
+			if rootRef := nip10.GetThreadRoot(targetEvent.Tags); rootRef != nil {
+				rootEventID = rootRef.AsTagReference()
+			}
+			opPubkey = targetEvent.PubKey.Hex()
+		}
+		fetchThread(rootEventID, opPubkey, whitelisted, "", nil)
+		return
+	}
+
 	rootReference := nip10.GetThreadRoot(event.Tags)
 
 	var rootEventID string
