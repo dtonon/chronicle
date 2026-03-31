@@ -96,6 +96,17 @@ func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, rela
 	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	// Fetch the root event itself by ID
+	if rootID, err := nostr.IDFromHex(rootEventID); err == nil {
+		for ev := range pool.FetchMany(timeout, relaysToQuery, nostr.Filter{IDs: []nostr.ID{rootID}}, nostr.SubscriptionOptions{}) {
+			if belongsToWotNetwork(ev.Event) || whitelisted[ev.PubKey.Hex()] {
+				saveEvent(ev.Event)
+				go fetchQuotedEvents(ev.Event)
+				go processBlossomBackup(ev.Event)
+			}
+		}
+	}
+
 	filter := nostr.Filter{
 		Kinds: []nostr.Kind{
 			nostr.KindArticle,
