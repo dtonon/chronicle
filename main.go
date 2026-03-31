@@ -112,15 +112,19 @@ func main() {
 		log.Printf("📁 Blossom media backup enabled (max %d MB per file)", config.MaxFileSizeMB)
 	}
 
+	migrationMode := os.Getenv("MIGRATION_MODE") == "true"
+
 	relay.OnEvent = policies.SeqEvent(
 		policies.RejectEventsWithBase64Media,
 		policies.EventIPRateLimiter(5, time.Minute*1, 30),
 		func(ctx context.Context, event nostr.Event) (bool, string) {
 			if acceptedEvent(event) {
 				addEventToRootList(event)
-				go fetchQuotedEvents(event)
-				go fetchConversation(event)
-				go processBlossomBackup(event)
+				if !migrationMode {
+					go fetchQuotedEvents(event)
+					go fetchConversation(event)
+					go processBlossomBackup(event)
+				}
 				return false, ""
 			}
 			return true, "event not allowed"
