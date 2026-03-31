@@ -16,11 +16,7 @@ func migration0001ClassifyRootNotes() error {
 	thirtyDays := nostr.Timestamp(30 * 24 * time.Hour / time.Second)
 	sixMonths := nostr.Timestamp(180 * 24 * time.Hour / time.Second)
 
-	for id, state := range rootNotesList.notes {
-		if state != "" {
-			continue
-		}
-
+	for id := range rootNotesList.notes {
 		refID, err := nostr.IDFromHex(id)
 		if err != nil {
 			continue
@@ -33,6 +29,7 @@ func migration0001ClassifyRootNotes() error {
 			}
 		}
 		if isInternal {
+			rootNotesList.notes[id] = ""
 			continue
 		}
 
