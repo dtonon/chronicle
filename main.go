@@ -136,7 +136,7 @@ func main() {
 		policies.NoComplexFilters,
 		func(ctx context.Context, filter nostr.Filter) (bool, string) {
 			for _, kind := range filter.Kinds {
-				if kind == nostr.KindGiftWrap {
+				if kind == nostr.KindGiftWrap || kind == 33301 || kind == 33302 {
 					authed, isAuthed := khatru.GetAuthed(ctx)
 					if !isAuthed {
 						return true, "auth-required: gift wrap events require authentication"
