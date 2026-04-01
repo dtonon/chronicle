@@ -134,6 +134,21 @@ func main() {
 	relay.OnRequest = policies.SeqRequest(
 		policies.NoEmptyFilters,
 		policies.NoComplexFilters,
+		func(ctx context.Context, filter nostr.Filter) (bool, string) {
+			for _, kind := range filter.Kinds {
+				if kind == nostr.KindGiftWrap {
+					authed, isAuthed := khatru.GetAuthed(ctx)
+					if !isAuthed {
+						return true, "auth-required: gift wrap events require authentication"
+					}
+					if authed.Hex() != config.OwnerPubkey {
+						return true, "restricted: only the relay owner can access gift wrap events"
+					}
+					return false, ""
+				}
+			}
+			return false, ""
+		},
 	)
 
 	relay.RejectConnection = policies.ConnectionRateLimiter(10, time.Minute*2, 30)
