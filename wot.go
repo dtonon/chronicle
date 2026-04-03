@@ -5,13 +5,13 @@ import (
 	"log"
 	"time"
 
-	"github.com/fiatjaf/khatru"
-	"github.com/nbd-wtf/go-nostr"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/khatru"
 )
 
 func belongsToWotNetwork(event nostr.Event) bool {
 	for _, pk := range trustNetwork {
-		if pk == event.PubKey {
+		if pk == event.PubKey.Hex() {
 			return true
 		}
 	}
@@ -42,12 +42,12 @@ func refreshProfiles(ctx context.Context, relay *khatru.Relay) {
 			end = len(trustNetwork)
 		}
 
-		filters := []nostr.Filter{{
-			Authors: trustNetwork[i:end],
-			Kinds:   []int{nostr.KindProfileMetadata},
-		}}
+		filter := nostr.Filter{
+			Authors: pubKeysFromHexes(trustNetwork[i:end]),
+			Kinds:   []nostr.Kind{nostr.KindProfileMetadata},
+		}
 
-		for ev := range pool.SubManyEose(timeout, seedRelays, filters) {
+		for ev := range pool.FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
 			relay.AddEvent(ctx, ev.Event)
 		}
 	}
@@ -58,15 +58,15 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	filters := []nostr.Filter{{
-		Authors: []string{config.OwnerPubkey},
-		Kinds:   []int{nostr.KindFollowList},
-	}}
+	filter := nostr.Filter{
+		Authors: []nostr.PubKey{nostr.MustPubKeyFromHex(config.OwnerPubkey)},
+		Kinds:   []nostr.Kind{nostr.KindFollowList},
+	}
 
 	log.Println("🔍 WoT: fetching owner's follows")
-	for ev := range pool.SubManyEose(timeoutCtx, seedRelays, filters) {
-		for _, contact := range ev.Event.Tags.GetAll([]string{"p"}) {
-			pubkeyFollowerCount[contact[1]]++ // Increment follower count for the pubkey
+	for ev := range pool.FetchMany(timeoutCtx, seedRelays, filter, nostr.SubscriptionOptions{}) {
+		for contact := range ev.Tags.FindAll("p") {
+			pubkeyFollowerCount[contact[1]]++
 			appendOneHopNetwork(contact[1])
 		}
 	}
@@ -81,23 +81,23 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 			end = len(oneHopNetwork)
 		}
 
-		filters = []nostr.Filter{{
-			Authors: oneHopNetwork[i:end],
-			Kinds:   []int{nostr.KindFollowList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
-		}}
+		filter = nostr.Filter{
+			Authors: pubKeysFromHexes(oneHopNetwork[i:end]),
+			Kinds:   []nostr.Kind{nostr.KindFollowList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
+		}
 
-		for ev := range pool.SubManyEose(timeout, seedRelays, filters) {
-			for _, contact := range ev.Event.Tags.GetAll([]string{"p"}) {
+		for ev := range pool.FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
+			for contact := range ev.Tags.FindAll("p") {
 				if len(contact) > 1 {
-					pubkeyFollowerCount[contact[1]]++ // Increment follower count for the pubkey
+					pubkeyFollowerCount[contact[1]]++
 				}
 			}
 
-			for _, relay := range ev.Event.Tags.GetAll([]string{"r"}) {
-				appendRelay(relay[1])
+			for r := range ev.Tags.FindAll("r") {
+				appendRelay(r[1])
 			}
 
-			if ev.Event.Kind == nostr.KindProfileMetadata {
+			if ev.Kind == nostr.KindProfileMetadata {
 				relay.AddEvent(ctx, ev.Event)
 			}
 		}
@@ -109,7 +109,6 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 }
 
 func appendRelay(relay string) {
-
 	for _, r := range relays {
 		if r == relay {
 			return

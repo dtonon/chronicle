@@ -1,6 +1,9 @@
 db/
+data/
 .env
 .env.production
-chronicle
-chronicle-linux-amd64
+/chronicle
+/chronicle-linux-amd64
+/migrate
+/migrate-linux-amd64
 assets/

@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/fiatjaf/eventstore/lmdb"
+	"fiatjaf.com/nostr/eventstore/lmdb"
 )
 
 func getDB() lmdb.LMDBBackend {
