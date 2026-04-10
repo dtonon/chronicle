@@ -94,6 +94,7 @@ func main() {
 	store = &db
 
 	relay.UseEventstore(store, 500)
+	relay.Negentropy = true
 
 	rootNotesList = NewRootNotes(config.DBPath + "root_notes")
 	if err := rootNotesList.LoadFromFile(); err != nil {
