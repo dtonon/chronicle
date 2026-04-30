@@ -27,6 +27,8 @@ type Config struct {
 	MaxFileSizeMB       int
 	FetchAllInteractions bool
 	SkipDeletions        bool
+	Negentropy           bool
+	NegentropyAuth       bool
 }
 
 func LoadConfig() Config {
@@ -62,6 +64,14 @@ func LoadConfig() Config {
 		os.Setenv("SKIP_DELETIONS", "FALSE")
 	}
 
+	if os.Getenv("NEGENTROPY") == "" {
+		os.Setenv("NEGENTROPY", "TRUE")
+	}
+
+	if os.Getenv("NEGENTROPY_AUTH") == "" {
+		os.Setenv("NEGENTROPY_AUTH", "TRUE")
+	}
+
 	if os.Getenv("BLOSSOM_MAX_FILE_MB") == "" {
 		os.Setenv("BLOSSOM_MAX_FILE_MB", "10")
 	}
@@ -90,6 +100,8 @@ func LoadConfig() Config {
 		MaxFileSizeMB:       maxFileSizeMB,
 		FetchAllInteractions: getEnv("FETCH_ALL_INTERACTIONS") == "TRUE",
 		SkipDeletions:        getEnv("SKIP_DELETIONS") == "TRUE",
+		Negentropy:           getEnv("NEGENTROPY") == "TRUE",
+		NegentropyAuth:       getEnv("NEGENTROPY_AUTH") == "TRUE",
 	}
 
 	return config

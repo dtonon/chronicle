@@ -94,7 +94,7 @@ func main() {
 	store = &db
 
 	relay.UseEventstore(store, 500)
-	relay.Negentropy = true
+	relay.Negentropy = config.Negentropy
 
 	rootNotesList = NewRootNotes(config.DBPath + "root_notes")
 	if err := rootNotesList.LoadFromFile(); err != nil {
@@ -146,6 +146,18 @@ func main() {
 						return true, "restricted: only the relay owner can access gift wrap events"
 					}
 					return false, ""
+				}
+			}
+			return false, ""
+		},
+		func(ctx context.Context, filter nostr.Filter) (bool, string) {
+			if config.NegentropyAuth && khatru.IsNegentropySession(ctx) {
+				authed, isAuthed := khatru.GetAuthed(ctx)
+				if !isAuthed {
+					return true, "auth-required: negentropy requires authentication"
+				}
+				if authed.Hex() != config.OwnerPubkey {
+					return true, "restricted: negentropy is only available to the relay owner"
 				}
 			}
 			return false, ""

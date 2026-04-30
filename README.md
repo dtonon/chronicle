@@ -78,6 +78,12 @@ FETCH_ALL_INTERACTIONS="FALSE"
 
 # Ignore deletion requests from other users, keeping their notes permanently
 SKIP_DELETIONS="FALSE"
+
+# Enable negentropy sync support (enabled by default)
+NEGENTROPY="TRUE"
+
+# Restrict negentropy to the relay owner via NIP-42 auth (recommended, enabled by default)
+NEGENTROPY_AUTH="TRUE"
 ```
 
 ## Build
@@ -105,7 +111,7 @@ You'll need to pass the `.env` parameters to the container as environments to us
 docker run -v ./db:/app/db -v ./assets:/app/assets -p 3334:3334 -e OWNER_PUBKEY="dc2be7fdba0c8a1bf9065cdee45c9484574e780f74694251e9c95d16432655b9" chronicle:latest
 ```
 
-## Docker-compose / Docker Swarm
+### Docker-compose / Docker Swarm
 
 In this image, you need to define two persistent volumes:
 * Database (db:/app/db)
@@ -154,7 +160,7 @@ If you want encrypt the data transfer with SSL, you can use products like **Cadd
 In this case, the url will be **wss://nostr-relay.mydomain.com**
 
 
-## Migration from v0.4.x to v0.5.0
+## Migration from v0.4.x to v0.5.0 (and following)
 
 Chronicle v0.5.0 use bbolt as a default database, if you are using badger you need to run a migration, since the latter is not supported anymore.
 
