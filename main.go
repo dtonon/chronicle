@@ -150,6 +150,18 @@ func main() {
 			}
 			return false, ""
 		},
+		func(ctx context.Context, filter nostr.Filter) (bool, string) {
+			if config.NegentropyAuth && khatru.IsNegentropySession(ctx) {
+				authed, isAuthed := khatru.GetAuthed(ctx)
+				if !isAuthed {
+					return true, "auth-required: negentropy requires authentication"
+				}
+				if authed.Hex() != config.OwnerPubkey {
+					return true, "restricted: negentropy is only available to the relay owner"
+				}
+			}
+			return false, ""
+		},
 	)
 
 	relay.RejectConnection = policies.ConnectionRateLimiter(10, time.Minute*2, 30)

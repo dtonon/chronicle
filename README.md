@@ -79,8 +79,11 @@ FETCH_ALL_INTERACTIONS="FALSE"
 # Ignore deletion requests from other users, keeping their notes permanently
 SKIP_DELETIONS="FALSE"
 
-# Enable negentropy sync support
-NEGENTROPY="FALSE"
+# Enable negentropy sync support (enabled by default)
+NEGENTROPY="TRUE"
+
+# Restrict negentropy to the relay owner via NIP-42 auth (recommended, enabled by default)
+NEGENTROPY_AUTH="TRUE"
 ```
 
 ## Build
