@@ -17,4 +17,4 @@ COPY . .
 RUN touch .env
 
 # Build the Go application
-RUN go build -tags=lmdb -ldflags "-X main.version=$(git describe --tags --always)" -o chronicle-linux-amd64 .
+RUN go build -o chronicle .

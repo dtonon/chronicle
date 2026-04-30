@@ -96,6 +96,70 @@ You can also use [lmdb](https://www.symas.com/lmdb), compiling with:
 go build -tags=lmdb .
 ```
 
+## Docker
+
+You can create a Docker image using the command
+
+```
+docker build -t chronicle:latest .
+```
+
+
+You'll need to pass the `.env` parameters to the container as environments to use the image you created
+
+```
+docker run -v ./db:/app/db -v ./assets:/app/assets -p 3334:3334 -e OWNER_PUBKEY="dc2be7fdba0c8a1bf9065cdee45c9484574e780f74694251e9c95d16432655b9" chronicle:latest
+```
+
+### Docker-compose / Docker Swarm
+
+In this image, you need to define two persistent volumes:
+* Database (db:/app/db)
+* Blossom Files (assets:/app/assets)
+  These store the post database and the files shared via Blossom, respectively.
+
+The only mandatory variable is **OWNER_PUBKEY**, which restricts posting privileges solely to the specified Nostr key.
+
+**Below is an example of the docker-compose:**
+
+```
+services:
+  chronicle:
+    image: ziomc/chronicle:latest
+    volumes:
+      - db:/app/db
+      - assets:/app/assets
+    ports:
+      - 3334:3334/tcp
+    environment:
+        OWNER_PUBKEY: "dc2be7fdba0c8a1bf9065cdee45c9484574e780f74694251e9c95d16432655b9"
+        RELAY_NAME: "Nostr Relay"
+        RELAY_DESCRIPTION: "My Personal Chronicle Relay"
+        RELAY_URL: "nostr-relay.mydomain.com"
+        RELAY_ICON: ""
+        RELAY_CONTACT: "me@mydomain.com"
+        REFRESH_INTERVAL: 24
+        MIN_FOLLOWERS: 3
+        POW_WHITELIST: ""
+        POW_DM_WHITELIST: ""
+        BLOSSOM_PUBLIC_URL: "http://nostr-relay.mydomain.com:3334"
+        BLOSSOM_BACKUP_MEDIA: "TRUE"
+        FETCH_ALL_INTERACTIONS: "TRUE"
+        SKIP_DELETIONS: "FALSE"
+    restart: always
+
+volumes:
+    db:
+    assets:
+
+```
+The url will be **ws://nostr-relay.mydomain.com:3334**
+
+If you want encrypt the data transfer with SSL, you can use products like **Caddy/Nginx/Traefik/HAProxy** to automatically get a valid certificate.
+
+In this case, the url will be **wss://nostr-relay.mydomain.com**
+
+
 ## Migration from v0.4.x to v0.5.0 (and following)
 
 Chronicle v0.5.0 use bbolt as a default database, if you are using badger you need to run a migration, since the latter is not supported anymore.
