@@ -78,6 +78,9 @@ FETCH_ALL_INTERACTIONS="FALSE"
 
 # Ignore deletion requests from other users, keeping their notes permanently
 SKIP_DELETIONS="FALSE"
+
+# Enable negentropy sync support
+NEGENTROPY="FALSE"
 ```
 
 ## Build
@@ -90,7 +93,7 @@ You can also use [lmdb](https://www.symas.com/lmdb), compiling with:
 go build -tags=lmdb .
 ```
 
-## Migration from v0.4.x to v0.5.0
+## Migration from v0.4.x to v0.5.0 (and following)
 
 Chronicle v0.5.0 use bbolt as a default database, if you are using badger you need to run a migration, since the latter is not supported anymore.
 
