@@ -27,6 +27,13 @@ var seedRelays = []string{
 	"wss://bitcoiner.social",
 }
 
+// A maxLimit of 0 makes the boltdb query loop spin forever inside a read
+// transaction, so every query must pass a positive limit
+const (
+	maxThreadReplies = 500
+	maxOwnerEvents   = 20000
+)
+
 func saveEvent(event nostr.Event) bool {
 	for range store.QueryEvents(nostr.Filter{IDs: []nostr.ID{event.ID}}, 1) {
 		return true
@@ -209,7 +216,7 @@ func fetchExternalThreadUpdates(state string, since time.Duration) {
 		for ownerEvent := range store.QueryEvents(nostr.Filter{
 			Authors: []nostr.PubKey{nostr.MustPubKeyFromHex(config.OwnerPubkey)},
 			Tags:    nostr.TagMap{"e": []string{id}},
-		}, 0) {
+		}, maxThreadReplies) {
 			for tag := range ownerEvent.Tags.FindAll("p") {
 				whitelisted[tag[1]] = true
 			}

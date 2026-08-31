@@ -62,7 +62,7 @@ func bootstrapOwnerBlossomFiles() {
 	missingFiles := make(map[string][]string)
 	eventHashes := 0
 
-	for event := range store.QueryEvents(nostr.Filter{Authors: []nostr.PubKey{ownerPK}}, 0) {
+	for event := range store.QueryEvents(nostr.Filter{Authors: []nostr.PubKey{ownerPK}}, maxOwnerEvents) {
 		hashes := extractBlossomHashes(event.Content)
 		for _, hash := range hashes {
 			eventHashes++
