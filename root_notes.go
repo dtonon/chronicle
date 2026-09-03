@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"strings"
+	"sync"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip10"
@@ -17,6 +18,7 @@ const (
 
 // RootNotes tracks thread root IDs with their state
 type RootNotes struct {
+	mu       sync.RWMutex
 	notes    map[string]string // id -> state ("", "EX", "OL", "AR")
 	filename string
 }
@@ -29,20 +31,39 @@ func NewRootNotes(filename string) *RootNotes {
 }
 
 func (r *RootNotes) Size() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return len(r.notes)
 }
 
 func (r *RootNotes) Add(id, state string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.notes[id] = state
 }
 
 func (r *RootNotes) Include(id string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	_, exists := r.notes[id]
 	return exists
 }
 
 func (r *RootNotes) State(id string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.notes[id]
+}
+
+// Snapshot returns a copy safe to iterate while other goroutines write
+func (r *RootNotes) Snapshot() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	copied := make(map[string]string, len(r.notes))
+	for id, state := range r.notes {
+		copied[id] = state
+	}
+	return copied
 }
 
 func (r *RootNotes) SaveToFile() error {
@@ -52,6 +73,8 @@ func (r *RootNotes) SaveToFile() error {
 	}
 	defer file.Close()
 
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	writer := bufio.NewWriter(file)
 	for id, state := range r.notes {
 		line := id
@@ -150,6 +173,8 @@ func (r *RootNotes) LoadFromFile() error {
 	}
 	defer file.Close()
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()

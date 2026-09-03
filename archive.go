@@ -202,7 +202,7 @@ func fetchConversation(event nostr.Event) {
 func fetchExternalThreadUpdates(state string, since time.Duration) {
 	sinceTs := nostr.Now() - nostr.Timestamp(since/time.Second)
 
-	for id, s := range rootNotesList.notes {
+	for id, s := range rootNotesList.Snapshot() {
 		if s != state {
 			continue
 		}
@@ -237,7 +237,7 @@ func updateExternalThreadStates() {
 	thirtyDays := nostr.Timestamp(30 * 24 * time.Hour / time.Second)
 	sixMonths := nostr.Timestamp(180 * 24 * time.Hour / time.Second)
 
-	for id, state := range rootNotesList.notes {
+	for id, state := range rootNotesList.Snapshot() {
 		if state == "" {
 			continue
 		}
@@ -255,11 +255,11 @@ func updateExternalThreadStates() {
 		age := now - lastActivity
 		switch {
 		case age > sixMonths:
-			rootNotesList.notes[id] = ThreadArchived
+			rootNotesList.Add(id, ThreadArchived)
 		case age > thirtyDays:
-			rootNotesList.notes[id] = ThreadOld
+			rootNotesList.Add(id, ThreadOld)
 		default:
-			rootNotesList.notes[id] = ThreadExternal
+			rootNotesList.Add(id, ThreadExternal)
 		}
 	}
 }
