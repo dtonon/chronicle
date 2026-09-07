@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -32,7 +33,7 @@ var (
 	version string
 )
 
-var pool *nostr.Pool
+var pool atomic.Pointer[nostr.Pool]
 var store eventstore.Store
 var rootNotesList *RootNotes
 var relays []string
@@ -41,6 +42,24 @@ var trustNetwork []string
 var oneHopNetwork []string
 var trustNetworkMap map[string]bool
 var pubkeyFollowerCount = make(map[string]int)
+
+func relayPool() *nostr.Pool {
+	return pool.Load()
+}
+
+// Every failed connection attempt leaks a goroutine bound to the pool
+// context, so the pool is replaced periodically and the old one closed
+// once in-flight fetches have had time to finish
+func rotatePool() {
+	old := pool.Swap(nostr.NewPool(nostr.PoolOptions{}))
+	if old == nil {
+		return
+	}
+	go func() {
+		time.Sleep(2 * time.Minute)
+		old.Close("rotated")
+	}()
+}
 
 func pubKeysFromHexes(hexes []string) []nostr.PubKey {
 	pks := make([]nostr.PubKey, 0, len(hexes))
@@ -72,7 +91,7 @@ func main() {
 	log.Println("🚀 Booting up Chronicle relay")
 	relay := khatru.NewRelay()
 	ctx := context.Background()
-	pool = nostr.NewPool(nostr.PoolOptions{})
+	rotatePool()
 	config = LoadConfig()
 	os.MkdirAll(config.BlossomAssetsPath, 0755)
 
@@ -238,6 +257,7 @@ func main() {
 		wg.Done()
 		for {
 			<-ticker.C
+			rotatePool()
 			refreshProfiles(ctx, relay)
 			refreshTrustNetwork(ctx, relay)
 		}

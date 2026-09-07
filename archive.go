@@ -58,7 +58,7 @@ func getNIP65Relays(pubkey string) (read []string, write []string) {
 	}
 
 	var bestEvent *nostr.Event
-	for ev := range pool.FetchMany(timeout, seedRelays, nostr.Filter{
+	for ev := range relayPool().FetchMany(timeout, seedRelays, nostr.Filter{
 		Authors: []nostr.PubKey{pk},
 		Kinds:   []nostr.Kind{nostr.KindRelayListMetadata},
 	}, nostr.SubscriptionOptions{}) {
@@ -105,7 +105,7 @@ func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, rela
 
 	// Fetch the root event itself by ID
 	if rootID, err := nostr.IDFromHex(rootEventID); err == nil {
-		for ev := range pool.FetchMany(timeout, relaysToQuery, nostr.Filter{IDs: []nostr.ID{rootID}}, nostr.SubscriptionOptions{}) {
+		for ev := range relayPool().FetchMany(timeout, relaysToQuery, nostr.Filter{IDs: []nostr.ID{rootID}}, nostr.SubscriptionOptions{}) {
 			if belongsToWotNetwork(ev.Event) || whitelisted[ev.PubKey.Hex()] {
 				saveEvent(ev.Event)
 				go fetchQuotedEvents(ev.Event)
@@ -129,7 +129,7 @@ func fetchThread(rootEventID, opPubkey string, whitelisted map[string]bool, rela
 		filter.Since = *since
 	}
 
-	for ev := range pool.FetchMany(timeout, relaysToQuery, filter, nostr.SubscriptionOptions{}) {
+	for ev := range relayPool().FetchMany(timeout, relaysToQuery, filter, nostr.SubscriptionOptions{}) {
 		if belongsToWotNetwork(ev.Event) || whitelisted[ev.PubKey.Hex()] {
 			saveEvent(ev.Event)
 			go fetchQuotedEvents(ev.Event)
@@ -288,7 +288,7 @@ func fetchQuotedEvents(event nostr.Event) {
 	relaysToQuery := append(quoteRelays, seedRelays...)
 
 	go func() {
-		for ev := range pool.FetchMany(timeout, relaysToQuery, nostr.Filter{
+		for ev := range relayPool().FetchMany(timeout, relaysToQuery, nostr.Filter{
 			IDs: func() []nostr.ID {
 				ids := make([]nostr.ID, 0, len(quoteIDs))
 				for _, h := range quoteIDs {
@@ -303,7 +303,7 @@ func fetchQuotedEvents(event nostr.Event) {
 			go processBlossomBackup(ev.Event)
 		}
 
-		for ev := range pool.FetchMany(timeout, relaysToQuery, nostr.Filter{
+		for ev := range relayPool().FetchMany(timeout, relaysToQuery, nostr.Filter{
 			Kinds: []nostr.Kind{
 				nostr.KindDeletion,
 				nostr.KindReaction,

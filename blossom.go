@@ -254,7 +254,7 @@ func getUserWriteRelays(authorPubkey string) []string {
 	}
 
 	if !found {
-		for ev := range pool.FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
+		for ev := range relayPool().FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
 			if !found || ev.CreatedAt > relayListEvent.CreatedAt {
 				relayListEvent = ev.Event
 				found = true
@@ -326,7 +326,7 @@ func downloadFromAltBlossomServers(authorPubkey string, hash string, enforceMaxS
 	}
 
 	found = false
-	for ev := range pool.FetchMany(timeout, seedRelays, serverFilter, nostr.SubscriptionOptions{}) {
+	for ev := range relayPool().FetchMany(timeout, seedRelays, serverFilter, nostr.SubscriptionOptions{}) {
 		if !found || ev.CreatedAt > serverListEvent.CreatedAt {
 			serverListEvent = ev.Event
 			found = true
@@ -349,7 +349,7 @@ func downloadFromAltBlossomServers(authorPubkey string, hash string, enforceMaxS
 		log.Printf("🔍 Searching user's write relays for %s server list", authorPubkey[:8]+"...")
 
 		found = false
-		for ev := range pool.FetchMany(timeout, writeRelays, serverFilter, nostr.SubscriptionOptions{}) {
+		for ev := range relayPool().FetchMany(timeout, writeRelays, serverFilter, nostr.SubscriptionOptions{}) {
 			if !found || ev.CreatedAt > serverListEvent.CreatedAt {
 				serverListEvent = ev.Event
 				found = true

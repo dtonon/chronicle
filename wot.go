@@ -47,7 +47,7 @@ func refreshProfiles(ctx context.Context, relay *khatru.Relay) {
 			Kinds:   []nostr.Kind{nostr.KindProfileMetadata},
 		}
 
-		for ev := range pool.FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
+		for ev := range relayPool().FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
 			relay.AddEvent(ctx, ev.Event)
 		}
 	}
@@ -64,7 +64,7 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 	}
 
 	log.Println("🔍 WoT: fetching owner's follows")
-	for ev := range pool.FetchMany(timeoutCtx, seedRelays, filter, nostr.SubscriptionOptions{}) {
+	for ev := range relayPool().FetchMany(timeoutCtx, seedRelays, filter, nostr.SubscriptionOptions{}) {
 		for contact := range ev.Tags.FindAll("p") {
 			pubkeyFollowerCount[contact[1]]++
 			appendOneHopNetwork(contact[1])
@@ -86,7 +86,7 @@ func refreshTrustNetwork(ctx context.Context, relay *khatru.Relay) {
 			Kinds:   []nostr.Kind{nostr.KindFollowList, nostr.KindRelayListMetadata, nostr.KindProfileMetadata},
 		}
 
-		for ev := range pool.FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
+		for ev := range relayPool().FetchMany(timeout, seedRelays, filter, nostr.SubscriptionOptions{}) {
 			for contact := range ev.Tags.FindAll("p") {
 				if len(contact) > 1 {
 					pubkeyFollowerCount[contact[1]]++
