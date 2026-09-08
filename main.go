@@ -217,7 +217,7 @@ func main() {
 
 	// Blossom config
 	bl := blossom.New(relay, config.BlossomPublicURL)
-	bl.Store = blossom.EventStoreBlobIndexWrapper{Store: &db, ServiceURL: bl.ServiceURL}
+	bl.Store = blobIndex{blossom.EventStoreBlobIndexWrapper{Store: &db, ServiceURL: bl.ServiceURL}}
 	bl.StoreBlob = func(ctx context.Context, sha256 string, ext string, body []byte) error {
 		file, err := os.Create(config.BlossomAssetsPath + sha256)
 		if err != nil {
