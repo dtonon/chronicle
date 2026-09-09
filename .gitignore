@@ -7,3 +7,5 @@ data/
 /migrate
 /migrate-linux-amd64
 assets/
+local/
+dist/
