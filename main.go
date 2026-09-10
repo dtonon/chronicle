@@ -21,6 +21,8 @@ import (
 	"fiatjaf.com/nostr/khatru"
 	"fiatjaf.com/nostr/khatru/blossom"
 	"fiatjaf.com/nostr/khatru/policies"
+
+	"chronicle/internal/version"
 )
 
 //go:embed template/index.html
@@ -28,10 +30,6 @@ var indexHTML string
 
 //go:embed template/assets
 var assets embed.FS
-
-var (
-	version string
-)
 
 var pool atomic.Pointer[nostr.Pool]
 var store eventstore.Store
@@ -102,7 +100,7 @@ func main() {
 	relay.Info.Contact = config.RelayContact
 	relay.Info.Description = config.RelayDescription
 	relay.Info.Software = "https://github.com/dtonon/chronicle"
-	relay.Info.Version = version
+	relay.Info.Version = version.String()
 
 	appendPubkey(config.OwnerPubkey)
 
