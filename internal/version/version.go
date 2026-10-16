@@ -3,7 +3,7 @@ package version
 
 import "runtime/debug"
 
-const Number = "0.6.1"
+const Number = "0.7.0"
 
 // Commit is set at build time with -ldflags "-X .../version.Commit=<hash>".
 var Commit string
